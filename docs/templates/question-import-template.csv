@@ -1,0 +1,6 @@
+question_type,stem,options,standard_answer,score,explanation,scoring_rubric
+single_choice,IQC检验的主要目的是什么？,保证来料质量|降低生产成本|加快入库速度|减少检验人员,A,2,来料检验以确保物料质量符合要求,
+multiple_choice,以下哪些属于IQC检验项目？,外观检查|尺寸测量|功能测试|包装运输,A,B,C,3,常见IQC项目包括外观、尺寸和功能,
+true_false,IQC可以在没有检验标准的情况下放行物料。,,F,1,无标准不可放行,
+fill_blank,IQC中文全称是____。,,"{""text"":""来料质量控制""}",2,,
+short_answer,简述IQC发现不合格品时的处理流程。,,"{""text"":""隔离、标识、通知供应商、评审处置""}",5,,"按公司程序：隔离标识、通知、MRB评审"

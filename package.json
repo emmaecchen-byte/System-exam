@@ -1,0 +1,20 @@
+{
+  "name": "exam-system",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "backend:install": "cd backend && npm install",
+    "backend:setup": "cd backend && npx prisma db push && npm run prisma:seed",
+    "backend:dev": "cd backend && npm run start:dev",
+    "frontend:install": "cd frontend && npm install",
+    "frontend:dev": "cd frontend && npm run dev",
+    "dev": "concurrently -n api,web -c blue,green \"npm run backend:dev\" \"npm run frontend:dev\"",
+    "setup": "npm run backend:install && npm run frontend:install && npm run backend:setup"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.23",
+    "concurrently": "^9.1.2"
+  }
+}

@@ -1,0 +1,74 @@
+export const ROLES = {
+  SUPER_ADMIN: 'SUPER_ADMIN',
+  ADMIN: 'ADMIN',
+  EXAM_ADMIN: 'EXAM_ADMIN',
+  GRADER: 'GRADER',
+  CANDIDATE: 'CANDIDATE',
+} as const;
+
+export type RoleCode = (typeof ROLES)[keyof typeof ROLES];
+
+export const PERMISSIONS = {
+  USER_MANAGE: 'user:manage',
+  ROLE_MANAGE: 'role:manage',
+  CATEGORY_MANAGE: 'category:manage',
+  QUESTION_MANAGE: 'question:manage',
+  QUESTION_IMPORT: 'question:import',
+  PAPER_MANAGE: 'paper:manage',
+  EXAM_MANAGE: 'exam:manage',
+  EXAM_PUBLISH: 'exam:publish',
+  SESSION_MANAGE: 'session:manage',
+  GRADING_MANAGE: 'grading:manage',
+  RESULT_VIEW: 'result:view',
+  RESULT_EXPORT: 'result:export',
+  RESULT_CORRECT: 'result:correct',
+  AUDIT_VIEW: 'audit:view',
+  SYSTEM_CONFIG: 'system:config',
+} as const;
+
+export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
+
+export const ROLE_PERMISSION_MAP: Record<RoleCode, PermissionCode[]> = {
+  [ROLES.SUPER_ADMIN]: Object.values(PERMISSIONS),
+  [ROLES.ADMIN]: [
+    PERMISSIONS.CATEGORY_MANAGE,
+    PERMISSIONS.QUESTION_MANAGE,
+    PERMISSIONS.QUESTION_IMPORT,
+    PERMISSIONS.PAPER_MANAGE,
+    PERMISSIONS.EXAM_MANAGE,
+    PERMISSIONS.EXAM_PUBLISH,
+    PERMISSIONS.SESSION_MANAGE,
+    PERMISSIONS.GRADING_MANAGE,
+    PERMISSIONS.RESULT_VIEW,
+    PERMISSIONS.RESULT_EXPORT,
+    PERMISSIONS.RESULT_CORRECT,
+    PERMISSIONS.AUDIT_VIEW,
+  ],
+  [ROLES.EXAM_ADMIN]: [
+    PERMISSIONS.EXAM_MANAGE,
+    PERMISSIONS.EXAM_PUBLISH,
+    PERMISSIONS.SESSION_MANAGE,
+    PERMISSIONS.RESULT_VIEW,
+    PERMISSIONS.RESULT_EXPORT,
+  ],
+  [ROLES.GRADER]: [PERMISSIONS.GRADING_MANAGE, PERMISSIONS.RESULT_VIEW],
+  [ROLES.CANDIDATE]: [],
+};
+
+export const OBJECTIVE_QUESTION_TYPES = [
+  'SINGLE_CHOICE',
+  'MULTIPLE_CHOICE',
+  'TRUE_FALSE',
+] as const;
+
+export const SUBJECTIVE_QUESTION_TYPES = ['FILL_BLANK', 'SHORT_ANSWER'] as const;
+
+export const EXAM_STATUS_TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ['READY', 'ARCHIVED'],
+  READY: ['PUBLISHED', 'DRAFT', 'ARCHIVED'],
+  PUBLISHED: ['IN_PROGRESS', 'ARCHIVED'],
+  IN_PROGRESS: ['PENDING_GRADING', 'COMPLETED'],
+  PENDING_GRADING: ['COMPLETED'],
+  COMPLETED: ['ARCHIVED'],
+  ARCHIVED: [],
+};

@@ -1,0 +1,466 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  LOCKED
+}
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  FILL_BLANK
+  SHORT_ANSWER
+}
+
+enum ContentStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+  DISABLED
+}
+
+enum ExamStatus {
+  DRAFT
+  READY
+  PUBLISHED
+  IN_PROGRESS
+  PENDING_GRADING
+  COMPLETED
+  ARCHIVED
+}
+
+enum SessionStatus {
+  DRAFT
+  PUBLISHED
+  IN_PROGRESS
+  CLOSED
+  ARCHIVED
+}
+
+enum ParticipantStatus {
+  ASSIGNED
+  IN_PROGRESS
+  SUBMITTED
+  ABSENT
+  GRADED
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  TIMEOUT
+  GRADING
+  COMPLETED
+  INVALID
+}
+
+enum SubmitType {
+  MANUAL
+  TIMEOUT
+  AUTO
+}
+
+enum ReviewStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum PassResult {
+  PASS
+  FAIL
+  PENDING
+}
+
+enum AuditAction {
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  CREATE
+  UPDATE
+  DELETE
+  PUBLISH
+  CLOSE
+  ARCHIVE
+  IMPORT
+  GRADE
+  SUBMIT
+  EXPORT
+  CORRECT
+  START_EXAM
+  AUTO_SAVE
+  TIMEOUT_SUBMIT
+  PAGE_LEAVE
+  SCREEN_SWITCH
+}
+
+model Department {
+  id        String     @id @default(cuid())
+  name      String
+  parentId  String?    @map("parent_id")
+  status    UserStatus @default(ACTIVE)
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  parent   Department?  @relation("DepartmentTree", fields: [parentId], references: [id])
+  children Department[] @relation("DepartmentTree")
+  users    User[]
+
+  @@map("departments")
+}
+
+model User {
+  id           String     @id @default(cuid())
+  name         String
+  employeeNo   String     @unique @map("employee_no")
+  departmentId String?    @map("department_id")
+  phone        String?
+  email        String?    @unique
+  passwordHash String     @map("password_hash")
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  department       Department?       @relation(fields: [departmentId], references: [id])
+  userRoles        UserRole[]
+  questionsCreated Question[]        @relation("QuestionCreator")
+  papersCreated    Paper[]           @relation("PaperCreator")
+  examsCreated     Exam[]            @relation("ExamCreator")
+  participants     ExamParticipant[]
+  attempts         ExamAttempt[]
+  scoreRecords     ScoreRecord[]
+  reviews          AnswerRecord[]    @relation("AnswerReviewer")
+  auditLogs        AuditLog[]
+  assignedAttempts ExamAttempt[]     @relation("AssignedGrader")
+
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  module      String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId String @map("user_id")
+  roleId String @map("role_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model ExamCategory {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  parentId    String?       @map("parent_id")
+  status      ContentStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  parent    ExamCategory?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children  ExamCategory[] @relation("CategoryTree")
+  questions Question[]
+  papers    Paper[]
+  exams     Exam[]
+
+  @@map("exam_categories")
+}
+
+model Attachment {
+  id           String   @id @default(cuid())
+  filename     String
+  originalName String   @map("original_name")
+  mimeType     String   @map("mime_type")
+  size         Int
+  path         String
+  uploadedBy   String?  @map("uploaded_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  papers Paper[]
+
+  @@map("attachments")
+}
+
+model Question {
+  id                 String        @id @default(cuid())
+  categoryId         String        @map("category_id")
+  type               QuestionType
+  stem               String
+  optionsJson        Json?         @map("options_json")
+  standardAnswerJson Json          @map("standard_answer_json")
+  score              Decimal       @default(1)
+  explanation        String?
+  scoringRubric      String?       @map("scoring_rubric")
+  difficulty         Int           @default(3)
+  tagsJson           Json?         @map("tags_json")
+  status             ContentStatus @default(DRAFT)
+  version            Int           @default(1)
+  createdById        String        @map("created_by")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  category       ExamCategory    @relation(fields: [categoryId], references: [id])
+  createdBy      User            @relation("QuestionCreator", fields: [createdById], references: [id])
+  paperQuestions PaperQuestion[]
+  answerRecords  AnswerRecord[]
+
+  @@map("questions")
+}
+
+model Paper {
+  id            String        @id @default(cuid())
+  categoryId    String        @map("category_id")
+  title         String
+  totalScore    Decimal       @default(0) @map("total_score")
+  version       Int           @default(1)
+  status        ContentStatus @default(DRAFT)
+  sourceFileId  String?       @map("source_file_id")
+  paperFamilyId String?       @map("paper_family_id")
+  createdById   String        @map("created_by")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  category       ExamCategory    @relation(fields: [categoryId], references: [id])
+  sourceFile     Attachment?     @relation(fields: [sourceFileId], references: [id])
+  createdBy      User            @relation("PaperCreator", fields: [createdById], references: [id])
+  paperQuestions PaperQuestion[]
+  exams          Exam[]
+
+  @@map("papers")
+}
+
+model PaperQuestion {
+  id                   String  @id @default(cuid())
+  paperId              String  @map("paper_id")
+  questionId           String  @map("question_id")
+  sortOrder            Int     @map("sort_order")
+  score                Decimal
+  questionSnapshotJson Json    @map("question_snapshot_json")
+
+  paper    Paper    @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id])
+
+  @@unique([paperId, questionId])
+  @@map("paper_questions")
+}
+
+model Exam {
+  id                     String     @id @default(cuid())
+  categoryId             String     @map("category_id")
+  paperId                String     @map("paper_id")
+  title                  String
+  description            String?
+  passScore              Decimal    @map("pass_score")
+  durationMinutes        Int        @map("duration_minutes")
+  startTime              DateTime?  @map("start_time")
+  endTime                DateTime?  @map("end_time")
+  status                 ExamStatus @default(DRAFT)
+  allowRetake            Boolean    @default(false) @map("allow_retake")
+  maxAttempts            Int        @default(1) @map("max_attempts")
+  randomQuestionOrder    Boolean    @default(false) @map("random_question_order")
+  randomOptionOrder      Boolean    @default(false) @map("random_option_order")
+  showResultToCandidate  Boolean    @default(false) @map("show_result_to_candidate")
+  showAnswersToCandidate Boolean    @default(false) @map("show_answers_to_candidate")
+  createdById            String     @map("created_by")
+  createdAt              DateTime   @default(now()) @map("created_at")
+  updatedAt              DateTime   @updatedAt @map("updated_at")
+
+  category     ExamCategory      @relation(fields: [categoryId], references: [id])
+  paper        Paper             @relation(fields: [paperId], references: [id])
+  createdBy    User              @relation("ExamCreator", fields: [createdById], references: [id])
+  sessions     ExamSession[]
+  participants ExamParticipant[]
+  attempts     ExamAttempt[]
+
+  @@map("exams")
+}
+
+model ExamSession {
+  id          String        @id @default(cuid())
+  examId      String        @map("exam_id")
+  name        String
+  sessionDate DateTime      @map("session_date")
+  startTime   DateTime      @map("start_time")
+  endTime     DateTime      @map("end_time")
+  location    String?
+  notes       String?
+  qrTokenHash   String?       @unique @map("qr_token_hash")
+  qrTokenEnc    String?       @map("qr_token_enc")
+  qrExpiresAt   DateTime?     @map("qr_expires_at")
+  qrCreatedAt   DateTime?     @map("qr_created_at")
+  qrMaxScans    Int?          @map("qr_max_scans")
+  qrScanCount   Int           @default(0) @map("qr_scan_count")
+  qrCandidateId String?       @map("qr_candidate_id")
+  status        SessionStatus @default(DRAFT)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  exam         Exam              @relation(fields: [examId], references: [id], onDelete: Cascade)
+  participants ExamParticipant[]
+  attempts     ExamAttempt[]
+
+  @@map("exam_sessions")
+}
+
+model ExamParticipant {
+  id              String            @id @default(cuid())
+  examId          String            @map("exam_id")
+  sessionId       String?           @map("session_id")
+  userId          String            @map("user_id")
+  allowedAttempts Int               @default(1) @map("allowed_attempts")
+  status          ParticipantStatus @default(ASSIGNED)
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  exam    Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  session ExamSession? @relation(fields: [sessionId], references: [id])
+  user    User         @relation(fields: [userId], references: [id])
+
+  @@unique([examId, userId, sessionId])
+  @@map("exam_participants")
+}
+
+model ExamAttempt {
+  id                   String        @id @default(cuid())
+  examId               String        @map("exam_id")
+  sessionId            String?       @map("session_id")
+  userId               String        @map("user_id")
+  startedAt            DateTime      @map("started_at")
+  submittedAt          DateTime?     @map("submitted_at")
+  durationSeconds      Int?          @map("duration_seconds")
+  submitType           SubmitType?   @map("submit_type")
+  status               AttemptStatus @default(IN_PROGRESS)
+  ip                   String?
+  deviceInfo           String?       @map("device_info")
+  currentQuestionIndex Int           @default(0) @map("current_question_index")
+  lastAutoSavedAt      DateTime?     @map("last_auto_saved_at")
+  assignedGraderId     String?       @map("assigned_grader_id")
+  needsQualityReview   Boolean       @default(false) @map("needs_quality_review")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+
+  exam           Exam           @relation(fields: [examId], references: [id])
+  session        ExamSession?   @relation(fields: [sessionId], references: [id])
+  user           User           @relation(fields: [userId], references: [id])
+  assignedGrader User?          @relation("AssignedGrader", fields: [assignedGraderId], references: [id])
+  answerRecords  AnswerRecord[]
+  scoreRecord    ScoreRecord?
+
+  @@map("exam_attempts")
+}
+
+model AnswerRecord {
+  id                   String       @id @default(cuid())
+  attemptId            String       @map("attempt_id")
+  questionId           String       @map("question_id")
+  questionSnapshotJson Json         @map("question_snapshot_json")
+  answerContentJson    Json?        @map("answer_content_json")
+  autoScore            Decimal?     @map("auto_score")
+  manualScore          Decimal?     @map("manual_score")
+  finalScore           Decimal?     @map("final_score")
+  reviewerId           String?      @map("reviewer_id")
+  reviewStatus         ReviewStatus @default(PENDING) @map("review_status")
+  reviewComment        String?      @map("review_comment")
+  markedForReview      Boolean      @default(false) @map("marked_for_review")
+  createdAt            DateTime     @default(now()) @map("created_at")
+  updatedAt            DateTime     @updatedAt @map("updated_at")
+
+  attempt  ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question Question    @relation(fields: [questionId], references: [id])
+  reviewer User?       @relation("AnswerReviewer", fields: [reviewerId], references: [id])
+
+  @@unique([attemptId, questionId])
+  @@map("answer_records")
+}
+
+model ScoreRecord {
+  id              String     @id @default(cuid())
+  attemptId       String     @unique @map("attempt_id")
+  userId          String     @map("user_id")
+  objectiveScore  Decimal    @default(0) @map("objective_score")
+  subjectiveScore Decimal    @default(0) @map("subjective_score")
+  totalScore      Decimal    @default(0) @map("total_score")
+  passScore       Decimal    @map("pass_score")
+  result          PassResult @default(PENDING)
+  reviewedAt      DateTime?  @map("reviewed_at")
+  publishedAt     DateTime?  @map("published_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  attempt ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id])
+
+  @@map("score_records")
+}
+
+model AuditLog {
+  id             String      @id @default(cuid())
+  actorId        String?     @map("actor_id")
+  actorRole      String?     @map("actor_role")
+  action         AuditAction
+  actionCategory String?     @map("action_category")
+  objectType     String      @map("object_type")
+  objectId       String?     @map("object_id")
+  objectName     String?     @map("object_name")
+  beforeDataJson Json?       @map("before_data_json")
+  afterDataJson  Json?       @map("after_data_json")
+  ip             String?
+  userAgent      String?     @map("user_agent")
+  deviceInfo     String?     @map("device_info")
+  reason         String?
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([objectType, objectId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@index([action])
+  @@map("audit_logs")
+}

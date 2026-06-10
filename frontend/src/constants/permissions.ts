@@ -1,0 +1,66 @@
+import { ROLES, type RoleCode } from './roles';
+
+export const PERMISSIONS = {
+  USER_MANAGE: 'user:manage',
+  ROLE_MANAGE: 'role:manage',
+  CATEGORY_MANAGE: 'category:manage',
+  QUESTION_MANAGE: 'question:manage',
+  QUESTION_IMPORT: 'question:import',
+  PAPER_MANAGE: 'paper:manage',
+  EXAM_MANAGE: 'exam:manage',
+  EXAM_PUBLISH: 'exam:publish',
+  SESSION_MANAGE: 'session:manage',
+  GRADING_MANAGE: 'grading:manage',
+  RESULT_VIEW: 'result:view',
+  RESULT_EXPORT: 'result:export',
+  RESULT_CORRECT: 'result:correct',
+  AUDIT_VIEW: 'audit:view',
+  SYSTEM_CONFIG: 'system:config',
+} as const;
+
+export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
+
+export const PERMISSION_LABELS: Record<PermissionCode, string> = {
+  [PERMISSIONS.USER_MANAGE]: 'Manage users',
+  [PERMISSIONS.ROLE_MANAGE]: 'Manage roles',
+  [PERMISSIONS.CATEGORY_MANAGE]: 'Manage categories',
+  [PERMISSIONS.QUESTION_MANAGE]: 'Manage questions',
+  [PERMISSIONS.QUESTION_IMPORT]: 'Import questions',
+  [PERMISSIONS.PAPER_MANAGE]: 'Manage papers',
+  [PERMISSIONS.EXAM_MANAGE]: 'Manage exams',
+  [PERMISSIONS.EXAM_PUBLISH]: 'Publish exams',
+  [PERMISSIONS.SESSION_MANAGE]: 'Manage sessions',
+  [PERMISSIONS.GRADING_MANAGE]: 'Grade submissions',
+  [PERMISSIONS.RESULT_VIEW]: 'View results',
+  [PERMISSIONS.RESULT_EXPORT]: 'Export results',
+  [PERMISSIONS.RESULT_CORRECT]: 'Correct / regrade results',
+  [PERMISSIONS.AUDIT_VIEW]: 'View audit logs',
+  [PERMISSIONS.SYSTEM_CONFIG]: 'System configuration',
+};
+
+export const ROLE_PERMISSION_MAP: Record<RoleCode, PermissionCode[]> = {
+  [ROLES.SUPER_ADMIN]: Object.values(PERMISSIONS),
+  [ROLES.ADMIN]: [
+    PERMISSIONS.CATEGORY_MANAGE,
+    PERMISSIONS.QUESTION_MANAGE,
+    PERMISSIONS.QUESTION_IMPORT,
+    PERMISSIONS.PAPER_MANAGE,
+    PERMISSIONS.EXAM_MANAGE,
+    PERMISSIONS.EXAM_PUBLISH,
+    PERMISSIONS.SESSION_MANAGE,
+    PERMISSIONS.GRADING_MANAGE,
+    PERMISSIONS.RESULT_VIEW,
+    PERMISSIONS.RESULT_EXPORT,
+    PERMISSIONS.RESULT_CORRECT,
+    PERMISSIONS.AUDIT_VIEW,
+  ],
+  [ROLES.EXAM_ADMIN]: [
+    PERMISSIONS.EXAM_MANAGE,
+    PERMISSIONS.EXAM_PUBLISH,
+    PERMISSIONS.SESSION_MANAGE,
+    PERMISSIONS.RESULT_VIEW,
+    PERMISSIONS.RESULT_EXPORT,
+  ],
+  [ROLES.GRADER]: [PERMISSIONS.GRADING_MANAGE, PERMISSIONS.RESULT_VIEW],
+  [ROLES.CANDIDATE]: [],
+};
