@@ -37,17 +37,19 @@ Open **http://localhost:5173** in your browser (not port 3000 — that is API on
 
 The first API startup can take 10–20 seconds while NestJS compiles; the dev script waits for the API before opening the frontend.
 
-### Always-on local app (recommended bookmark)
+### Always-on local app (recommended — no `npm run dev` each day)
 
-`npm run dev` stops when you close Cursor. For a link that keeps working after you log out, use **PM2 background services** (one-time setup):
+`npm run dev` stops when you close Cursor. For an app that **starts on login** and keeps running in the background:
 
 ```bash
 npm install          # installs pm2
 npm run setup        # if you have not already
-npm run services:autostart
+npm run services:install   # one-time: build + PM2 + Mac login autostart
 ```
 
-If prompted, run the `sudo pm2 startup …` command it prints, then run `npm run services:autostart` again.
+After that, open **http://localhost:5173** anytime — no need to run `npm run dev` unless you are actively changing code.
+
+To start manually without reinstalling: `npm run services:start`
 
 | Command | Purpose |
 |---------|---------|
