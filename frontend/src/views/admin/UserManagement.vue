@@ -95,6 +95,7 @@ function openCreate() {
   isEdit.value = false;
   editingId.value = null;
   resetForm();
+  generateRandomPassword();
   dialogVisible.value = true;
 }
 

@@ -57,6 +57,7 @@ const groupedPermissions = computed(() => {
   return MODULE_ORDER.filter((m) => groups.has(m)).map((module) => ({
     module,
     label: moduleLabel(module),
+    hint: groupHint(module),
     items: groups.get(module) ?? [],
   }));
 });
@@ -65,13 +66,51 @@ const selectedRole = computed(() => roles.value.find((r) => r.id === selectedRol
 
 const isReadOnly = computed(() => selectedRole.value?.code === ROLES.SUPER_ADMIN);
 
+const selectedCount = computed(() => selectedCodes.value.length);
+
+const totalCount = computed(() => permissions.value.length);
+
 function moduleLabel(module: string) {
   const key = `roleMgmt.groups.${module}`;
   return te(key) ? t(key) : module;
 }
 
+function groupHint(module: string) {
+  const key = `roleMgmt.groupHints.${module}`;
+  return te(key) ? t(key) : '';
+}
+
 function permissionLabel(code: string) {
   return PERMISSION_LABELS[code as PermissionCode] ?? code;
+}
+
+function isGroupFullySelected(codes: string[]) {
+  return codes.length > 0 && codes.every((c) => selectedCodes.value.includes(c));
+}
+
+function isGroupPartiallySelected(codes: string[]) {
+  const selected = codes.filter((c) => selectedCodes.value.includes(c)).length;
+  return selected > 0 && selected < codes.length;
+}
+
+function toggleGroup(codes: string[], checked: boolean) {
+  if (isReadOnly.value) return;
+  const set = new Set(selectedCodes.value);
+  for (const code of codes) {
+    if (checked) set.add(code);
+    else set.delete(code);
+  }
+  selectedCodes.value = [...set];
+}
+
+function selectAllPermissions() {
+  if (isReadOnly.value) return;
+  selectedCodes.value = permissions.value.map((p) => p.code);
+}
+
+function clearAllPermissions() {
+  if (isReadOnly.value) return;
+  selectedCodes.value = [];
 }
 
 async function selectRole(role: RoleRow) {
@@ -138,14 +177,22 @@ onMounted(load);
         <h2>{{ t('roleMgmt.title') }}</h2>
         <p class="subtitle">{{ t('roleMgmt.subtitle') }}</p>
       </div>
-      <el-button
-        type="primary"
-        :loading="saving"
-        :disabled="!selectedRoleId || isReadOnly"
-        @click="save"
-      >
-        {{ t('roleMgmt.savePermissions') }}
-      </el-button>
+      <div class="header-actions">
+        <el-button :disabled="isReadOnly" @click="selectAllPermissions">
+          {{ t('roleMgmt.selectAll') }}
+        </el-button>
+        <el-button :disabled="isReadOnly" @click="clearAllPermissions">
+          {{ t('roleMgmt.clearAll') }}
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="saving"
+          :disabled="!selectedRoleId || isReadOnly"
+          @click="save"
+        >
+          {{ t('roleMgmt.savePermissions') }}
+        </el-button>
+      </div>
     </div>
 
     <el-row :gutter="16">
@@ -165,17 +212,37 @@ onMounted(load);
       <el-col :xs="24" :md="16">
         <el-card v-if="selectedRole" shadow="never">
           <template #header>
-            <span>{{ roleLabel(selectedRole.code) }}</span>
-            <el-tag v-if="isReadOnly" size="small" type="warning" style="margin-left: 8px">
-              {{ t('roleMgmt.readOnly') }}
-            </el-tag>
-            <el-tag size="small" type="info" style="margin-left: 8px">
-              {{ roleUserCount }} users
-            </el-tag>
+            <div class="perm-header">
+              <span>{{ roleLabel(selectedRole.code) }}</span>
+              <span class="perm-header-tags">
+                <el-tag v-if="isReadOnly" size="small" type="warning">
+                  {{ t('roleMgmt.readOnly') }}
+                </el-tag>
+                <el-tag size="small" type="info">
+                  {{ roleUserCount }} {{ t('roleMgmt.users') }}
+                </el-tag>
+                <el-tag size="small">
+                  {{ selectedCount }} / {{ totalCount }}
+                </el-tag>
+              </span>
+            </div>
           </template>
           <p v-if="selectedRole.description" class="desc">{{ selectedRole.description }}</p>
           <div v-for="group in groupedPermissions" :key="group.module" class="perm-group">
-            <h4>{{ group.label }}</h4>
+            <div class="perm-group-header">
+              <div>
+                <h4>{{ group.label }}</h4>
+                <p v-if="group.hint" class="group-hint">{{ group.hint }}</p>
+              </div>
+              <el-checkbox
+                :model-value="isGroupFullySelected(group.items.map((p) => p.code))"
+                :indeterminate="isGroupPartiallySelected(group.items.map((p) => p.code))"
+                :disabled="isReadOnly"
+                @change="(v: boolean) => toggleGroup(group.items.map((p) => p.code), v)"
+              >
+                {{ t('roleMgmt.selectGroup') }}
+              </el-checkbox>
+            </div>
             <el-checkbox-group v-model="selectedCodes" :disabled="isReadOnly">
               <el-checkbox
                 v-for="perm in group.items"
@@ -209,20 +276,54 @@ onMounted(load);
   margin: 0;
   color: #6b7280;
 }
+.header-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .role-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
   width: 100%;
 }
+.perm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.perm-header-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 .perm-group {
   margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f3f4f6;
+}
+.perm-group:last-child {
+  border-bottom: none;
+}
+.perm-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
 }
 .perm-group h4 {
-  margin: 0 0 8px;
+  margin: 0 0 4px;
   font-size: 14px;
   color: #374151;
   font-weight: 600;
+}
+.group-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #9ca3af;
 }
 .perm-check {
   display: block;

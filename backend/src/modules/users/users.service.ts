@@ -92,9 +92,9 @@ export class UsersService {
     });
   }
 
-  async findDepartmentTree() {
+  async findDepartmentTree(includeInactive = false) {
     const departments = await this.prisma.department.findMany({
-      where: { status: 'ACTIVE' },
+      where: includeInactive ? undefined : { status: 'ACTIVE' },
       orderBy: { name: 'asc' },
     });
     type DeptNode = (typeof departments)[0] & { children: DeptNode[] };

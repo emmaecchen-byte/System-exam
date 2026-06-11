@@ -4,7 +4,8 @@ import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { AxiosError } from 'axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Plus, Search } from '@element-plus/icons-vue';
+import { Plus, Search, Upload } from '@element-plus/icons-vue';
+import type { UploadProps, UploadRawFile } from 'element-plus';
 import { fetchCategoryOptions } from '@/api/categories';
 import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 import {
@@ -25,7 +26,9 @@ const list = ref<PaperListItem[]>([]);
 const categories = ref<Array<{ id: string; name: string }>>([]);
 const createVisible = ref(false);
 const createForm = ref({ title: '', categoryId: '' });
+const createAttachment = ref<File | null>(null);
 const creating = ref(false);
+const maxAttachmentMb = 20;
 
 const filters = reactive({
   search: '',
@@ -75,6 +78,24 @@ function onSearch() {
   loadList();
 }
 
+const beforeCreateUpload: UploadProps['beforeUpload'] = (rawFile: UploadRawFile) => {
+  const ext = rawFile.name.toLowerCase().slice(rawFile.name.lastIndexOf('.'));
+  if (!['.doc', '.docx', '.pdf'].includes(ext)) {
+    ElMessage.error(t('paperForm.invalidType'));
+    return false;
+  }
+  if (rawFile.size > maxAttachmentMb * 1024 * 1024) {
+    ElMessage.error(t('paperForm.tooLarge', { size: maxAttachmentMb }));
+    return false;
+  }
+  createAttachment.value = rawFile;
+  return false;
+};
+
+function clearCreateAttachment() {
+  createAttachment.value = null;
+}
+
 async function submitCreate() {
   if (!createForm.value.title.trim() || !createForm.value.categoryId) {
     ElMessage.warning(t('papers.requiredFields'));
@@ -82,12 +103,16 @@ async function submitCreate() {
   }
   creating.value = true;
   try {
-    const { data } = await createPaper({
-      title: createForm.value.title.trim(),
-      categoryId: createForm.value.categoryId,
-    });
+    const { data } = await createPaper(
+      {
+        title: createForm.value.title.trim(),
+        categoryId: createForm.value.categoryId,
+      },
+      createAttachment.value ?? undefined,
+    );
     createVisible.value = false;
     createForm.value = { title: '', categoryId: '' };
+    createAttachment.value = null;
     router.push(`/papers/${data.id}/edit`);
   } catch {
     ElMessage.error(t('papers.createFailed'));
@@ -227,7 +252,12 @@ onMounted(async () => {
       />
     </el-card>
 
-    <el-dialog v-model="createVisible" :title="t('papers.createTitle')" width="480px">
+    <el-dialog
+      v-model="createVisible"
+      :title="t('papers.createTitle')"
+      width="480px"
+      @closed="createAttachment = null"
+    >
       <el-form label-position="top">
         <el-form-item :label="t('common.title')" required>
           <el-input v-model="createForm.title" :placeholder="t('papers.createPlaceholder')" />
@@ -236,6 +266,27 @@ onMounted(async () => {
           <el-select v-model="createForm.categoryId" filterable style="width: 100%">
             <el-option v-for="c in categories" :key="c.id" :label="categoryName(c.id, c.name)" :value="c.id" />
           </el-select>
+        </el-form-item>
+        <el-form-item :label="t('papers.createAttachmentLabel')">
+          <p class="create-attachment-hint">{{ t('paperForm.auditNote') }}</p>
+          <div v-if="createAttachment" class="create-attachment-file">
+            <span>{{ createAttachment.name }}</span>
+            <el-button link type="danger" @click="clearCreateAttachment">{{ t('common.delete') }}</el-button>
+          </div>
+          <el-upload
+            v-else
+            drag
+            accept=".doc,.docx,.pdf"
+            :show-file-list="false"
+            :before-upload="beforeCreateUpload"
+            class="create-upload"
+          >
+            <el-icon class="upload-icon"><Upload /></el-icon>
+            <div>{{ t('paperForm.dropHint') }}</div>
+            <template #tip>
+              <div class="upload-tip">{{ t('paperForm.acceptHint', { size: maxAttachmentMb }) }}</div>
+            </template>
+          </el-upload>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -267,5 +318,33 @@ onMounted(async () => {
 }
 .toolbar :deep(.el-card__body) {
   padding-bottom: 2px;
+}
+.create-attachment-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+.create-attachment-file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.create-upload {
+  width: 100%;
+}
+.upload-icon {
+  font-size: 32px;
+  color: #9ca3af;
+  margin-bottom: 4px;
+}
+.upload-tip {
+  font-size: 12px;
+  color: #9ca3af;
 }
 </style>

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequirePermissions } from '../../common/decorators/auth.decorator';
 import { PERMISSIONS } from '../../common/constants';
@@ -13,8 +13,8 @@ export class DepartmentsController {
   constructor(private usersService: UsersService) {}
 
   @Get()
-  findTree() {
-    return this.usersService.findDepartmentTree();
+  findTree(@Query('includeInactive') includeInactive?: string) {
+    return this.usersService.findDepartmentTree(includeInactive === 'true');
   }
 
   @Post()

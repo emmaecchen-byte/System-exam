@@ -84,17 +84,29 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'users',
         component: () => import('@/views/admin/UserManagement.vue'),
-        meta: { titleKey: 'meta.userManagement', permission: 'user:manage' },
+        meta: {
+          titleKey: 'meta.userManagement',
+          permission: 'user:manage',
+          roles: superAdminAndAdmin,
+        },
       },
       {
         path: 'departments',
         component: () => import('@/views/admin/DepartmentManagement.vue'),
-        meta: { titleKey: 'meta.departments', permission: 'user:manage' },
+        meta: {
+          titleKey: 'meta.departments',
+          permission: 'user:manage',
+          roles: superAdminAndAdmin,
+        },
       },
       {
         path: 'roles',
         component: () => import('@/views/admin/RolePermission.vue'),
-        meta: { titleKey: 'meta.roles', permission: 'role:manage' },
+        meta: {
+          titleKey: 'meta.roles',
+          permission: 'role:manage',
+          roles: [ROLES.SUPER_ADMIN],
+        },
       },
       {
         path: 'reports',

@@ -5,7 +5,7 @@ import { TIMER_QUEUE } from './timer.constants';
 import { TimerProcessor } from './timer.processor';
 import { TimerService } from './timer.service';
 
-const redisEnabled = process.env.REDIS_ENABLED !== 'false';
+const redisEnabled = process.env.REDIS_ENABLED === 'true';
 
 @Module({
   imports: [

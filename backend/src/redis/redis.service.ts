@@ -9,8 +9,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private available = false;
 
   async onModuleInit() {
-    if (process.env.REDIS_ENABLED === 'false') {
-      this.logger.warn('Redis disabled via REDIS_ENABLED=false — using database fallback mode');
+    if (process.env.REDIS_ENABLED !== 'true') {
+      this.logger.log('Redis not enabled (set REDIS_ENABLED=true when Redis is running)');
       return;
     }
 

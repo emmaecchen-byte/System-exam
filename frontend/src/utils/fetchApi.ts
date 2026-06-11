@@ -1,3 +1,5 @@
+import { getApiBaseUrl } from '@/config/apiBase';
+
 export class FetchApiError extends Error {
   status: number;
 
@@ -23,7 +25,7 @@ export async function fetchApi<T>(
   const token = getToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${getApiBaseUrl()}${path}`, {
     ...rest,
     headers,
     body: json !== undefined ? JSON.stringify(json) : rest.body,

@@ -4,6 +4,8 @@ build/
 .env
 .env.local
 *.log
+logs/
+.pm2/
 .DS_Store
 coverage/
 .idea/

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import type { ElTree } from 'element-plus';
+import type Node from 'element-plus/es/components/tree/src/model/node';
+import type { NodeDropType } from 'element-plus/es/components/tree/src/tree.type';
 import {
   createDepartment,
   deleteDepartment,
@@ -33,9 +35,9 @@ const form = reactive({
 
 const treeProps = { children: 'children', label: 'name' };
 
-const rules: FormRules = {
-  name: [{ required: true, message: 'Required', trigger: 'blur' }],
-};
+const rules = computed<FormRules>(() => ({
+  name: [{ required: true, message: t('deptMgmt.nameRequired'), trigger: 'blur' }],
+}));
 
 function flatten(nodes: DeptTreeNode[], excludeId?: string): Array<{ id: string; name: string }> {
   const out: Array<{ id: string; name: string }> = [];
@@ -49,12 +51,57 @@ function flatten(nodes: DeptTreeNode[], excludeId?: string): Array<{ id: string;
   return out;
 }
 
+function toCascaderOptions(
+  nodes: DeptTreeNode[],
+  excludeId?: string,
+): Array<{ value: string; label: string; children?: ReturnType<typeof toCascaderOptions> }> {
+  return nodes
+    .filter((n) => n.id !== excludeId)
+    .map((n) => ({
+      value: n.id,
+      label: n.name,
+      children: n.children?.length ? toCascaderOptions(n.children, excludeId) : undefined,
+    }));
+}
+
+function collectDescendantIds(node: DeptTreeNode, out = new Set<string>()) {
+  for (const child of node.children ?? []) {
+    out.add(child.id);
+    collectDescendantIds(child, out);
+  }
+  return out;
+}
+
+const parentCascaderOptions = computed(() => toCascaderOptions(tree.value, editingId.value ?? undefined));
+
+function findDeptPath(nodes: DeptTreeNode[], targetId: string, path: string[] = []): string[] | null {
+  for (const n of nodes) {
+    const next = [...path, n.id];
+    if (n.id === targetId) return next;
+    if (n.children?.length) {
+      const found = findDeptPath(n.children, targetId, next);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+const parentCascaderValue = computed({
+  get: () => {
+    if (!form.parentId) return [] as string[];
+    return findDeptPath(tree.value, form.parentId) ?? [form.parentId];
+  },
+  set: (path: string[]) => {
+    form.parentId = path.length ? path[path.length - 1] : null;
+  },
+});
+
 const parentOptions = ref<Array<{ id: string; name: string }>>([]);
 
 async function load() {
   loading.value = true;
   try {
-    const { data } = await fetchDepartmentTree();
+    const { data } = await fetchDepartmentTree(true);
     tree.value = data;
     if (selectedNode.value) {
       selectedNode.value = findNode(data, selectedNode.value.id) ?? null;
@@ -177,6 +224,36 @@ async function remove(node?: DeptTreeNode) {
   }
 }
 
+function allowDrop(draggingNode: Node, dropNode: Node, type: NodeDropType) {
+  if (type !== 'inner') return true;
+  const dragged = draggingNode.data as DeptTreeNode;
+  const target = dropNode.data as DeptTreeNode;
+  if (dragged.id === target.id) return false;
+  const descendants = collectDescendantIds(dragged);
+  return !descendants.has(target.id);
+}
+
+async function handleNodeDrop(draggingNode: Node, dropNode: Node, dropType: NodeDropType) {
+  const draggedId = (draggingNode.data as DeptTreeNode).id;
+  let newParentId: string | null = null;
+  if (dropType === 'inner') {
+    newParentId = (dropNode.data as DeptTreeNode).id;
+  } else {
+    newParentId = (dropNode.data as DeptTreeNode).parentId ?? null;
+  }
+  if (newParentId === draggedId) return;
+
+  try {
+    await updateDepartment(draggedId, { parentId: newParentId });
+    ElMessage.success(t('deptMgmt.moved'));
+    await load();
+  } catch (e: unknown) {
+    const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+    ElMessage.error(msg ?? t('deptMgmt.saveFailed'));
+    await load();
+  }
+}
+
 onMounted(load);
 </script>
 
@@ -215,18 +292,23 @@ onMounted(load);
         <span v-if="selectedNode" class="selected-label">{{ selectedNode.name }}</span>
       </div>
 
+      <p class="drag-hint">{{ t('deptMgmt.dragHint') }}</p>
+
       <el-tree
         ref="treeRef"
         :data="tree"
         :props="treeProps"
         node-key="id"
         highlight-current
+        draggable
         :default-expand-all="expandAllNodes"
+        :allow-drop="allowDrop"
         @node-click="onNodeClick"
+        @node-drop="handleNodeDrop"
       >
         <template #default="{ data }">
           <div class="tree-node">
-            <span>{{ data.name }}</span>
+            <span :class="{ 'is-inactive': data.status === 'INACTIVE' }">{{ data.name }}</span>
             <span class="node-actions">
               <el-tag v-if="data.status === 'INACTIVE'" size="small" type="info">
                 {{ t('userMgmt.statusDisabled') }}
@@ -258,19 +340,14 @@ onMounted(load);
           <el-input v-model="form.name" />
         </el-form-item>
         <el-form-item :label="t('deptMgmt.parent')">
-          <el-select
-            v-model="form.parentId"
+          <el-cascader
+            v-model="parentCascaderValue"
+            :options="parentCascaderOptions"
+            :props="{ checkStrictly: true, emitPath: true, value: 'value', label: 'label' }"
             clearable
             :placeholder="t('deptMgmt.topLevel')"
             style="width: 100%"
-          >
-            <el-option
-              v-for="opt in parentOptions"
-              :key="opt.id"
-              :label="opt.name"
-              :value="opt.id"
-            />
-          </el-select>
+          />
         </el-form-item>
         <el-form-item v-if="isEdit" :label="t('deptMgmt.status')">
           <el-select v-model="form.status" style="width: 100%">
@@ -312,8 +389,13 @@ onMounted(load);
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
   flex-wrap: wrap;
+}
+.drag-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #9ca3af;
 }
 .selected-label {
   margin-left: auto;
@@ -327,6 +409,9 @@ onMounted(load);
   flex: 1;
   padding-right: 8px;
   gap: 8px;
+}
+.is-inactive {
+  color: #9ca3af;
 }
 .node-actions {
   display: inline-flex;

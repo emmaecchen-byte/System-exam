@@ -108,8 +108,10 @@ export function resetUserPassword(id: string) {
   return api.post<{ password: string }>(`/admin/users/${id}/reset-password`);
 }
 
-export function fetchDepartmentTree() {
-  return api.get<DeptTreeNode[]>('/admin/departments');
+export function fetchDepartmentTree(includeInactive = true) {
+  return api.get<DeptTreeNode[]>('/admin/departments', {
+    params: includeInactive ? { includeInactive: true } : undefined,
+  });
 }
 
 export function createDepartment(payload: { name: string; parentId?: string | null }) {

@@ -5,7 +5,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { redisConfig } from './config/redis.config';
 
-const redisEnabled = process.env.REDIS_ENABLED !== 'false';
+/** Redis/Bull are opt-in for local dev; set REDIS_ENABLED=true when Redis is running. */
+const redisEnabled = process.env.REDIS_ENABLED === 'true';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
