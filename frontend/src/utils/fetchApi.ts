@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '@/config/apiBase';
+import { getApiBaseUrl, needsTunnelBypassHeader } from '@/config/apiBase';
 
 export class FetchApiError extends Error {
   status: number;
@@ -24,6 +24,9 @@ export async function fetchApi<T>(
   }
   const token = getToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (needsTunnelBypassHeader()) {
+    headers.set('Bypass-Tunnel-Reminder', 'true');
+  }
 
   const res = await fetch(`${getApiBaseUrl()}${path}`, {
     ...rest,

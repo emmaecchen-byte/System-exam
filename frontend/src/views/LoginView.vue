@@ -23,6 +23,7 @@ const form = ref({
 const loading = ref(false);
 const checkingServer = ref(false);
 const serverOnline = ref<boolean | null>(null);
+const pageOrigin = typeof window !== 'undefined' ? window.location.origin : '';
 
 async function checkServer(maxAttempts = 8, delayMs = 1500) {
   checkingServer.value = true;
@@ -109,6 +110,9 @@ async function submit() {
         class="server-alert"
       >
         <template #default>
+          <p v-if="pageOrigin" class="server-alert-text">
+            {{ t('login.apiOfflineOn', { url: pageOrigin }) }}
+          </p>
           <p class="server-alert-text">{{ t('login.apiOfflineHint') }}</p>
           <el-button size="small" :loading="checkingServer" @click="checkServer()">
             {{ t('login.retryConnection') }}

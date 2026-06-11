@@ -1,5 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { getApiBaseUrl } from '@/config/apiBase';
+import { getApiBaseUrl, needsTunnelBypassHeader } from '@/config/apiBase';
 
 const api = axios.create({
   baseURL: getApiBaseUrl(),
@@ -14,6 +14,9 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = getToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  if (needsTunnelBypassHeader()) {
+    config.headers['Bypass-Tunnel-Reminder'] = 'true';
   }
   return config;
 });

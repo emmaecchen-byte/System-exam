@@ -21,11 +21,16 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    strictPort: true,
+    allowedHosts: true,
     proxy: apiProxy,
   },
   preview: {
     host: '0.0.0.0',
     port: 5173,
+    strictPort: true,
+    // Allow LAN IP + localtunnel/ngrok hostnames when sharing via npm run services:share
+    allowedHosts: true,
     proxy: apiProxy,
   },
 });

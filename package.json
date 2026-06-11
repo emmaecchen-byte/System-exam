@@ -22,7 +22,8 @@
     "services:autostart": "bash scripts/install-autostart.sh",
     "services:share": "bash scripts/share-public.sh",
     "services:unshare": "npx pm2 delete exam-tunnel 2>/dev/null; rm -f logs/public-url.txt; echo Tunnel stopped",
-    "services:urls": "bash scripts/print-urls.sh"
+    "services:urls": "bash scripts/print-urls.sh",
+    "services:diagnose": "bash scripts/diagnose-phone-access.sh"
   },
   "devDependencies": {
     "concurrently": "^10.0.3",

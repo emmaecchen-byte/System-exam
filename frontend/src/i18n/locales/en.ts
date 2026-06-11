@@ -143,7 +143,8 @@ export default {
     enterCredentials: 'Please enter your email/employee number and password.',
     apiOffline: 'Cannot connect to API server',
     apiOfflineHint:
-      'Local: run npm run services:start from the project root (or npm run dev). Vercel: set VITE_API_BASE_URL to your API URL and redeploy, or use the local/tunnel link from npm run services:urls.',
+      'If Wi‑Fi links fail on your phone, your router blocks device-to-device access. Run npm run services:share on your Mac and open the https://….loca.lt link instead (tap Continue on the tunnel reminder page). Keep your Mac running with npm run services:start.',
+    apiOfflineOn: 'You are visiting: {url}',
     retryConnection: 'Retry connection',
     demoAccounts: 'Demo accounts',
     demoSuperAdmin: 'Super Admin — admin{\'@\'}example.com or admin / Admin{\'@\'}123',

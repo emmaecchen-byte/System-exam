@@ -143,7 +143,8 @@ export default {
     enterCredentials: '请输入邮箱/工号和密码。',
     apiOffline: '无法连接 API 服务器',
     apiOfflineHint:
-      '本地：在项目根目录运行 npm run services:start（或 npm run dev）。Vercel 部署：请设置 VITE_API_BASE_URL 指向 API 地址后重新部署，或使用 npm run services:urls 中的本地/隧道链接。',
+      '若手机无法打开 Wi‑Fi 局域网链接，说明路由器阻止了设备互访。请在 Mac 上运行 npm run services:share，用手机打开 https://….loca.lt 链接（隧道提示页点继续）。Mac 需保持运行 npm run services:start。',
+    apiOfflineOn: '当前访问地址：{url}',
     retryConnection: '重试连接',
     demoAccounts: '演示账号',
     demoSuperAdmin: '超级管理员 — admin{\'@\'}example.com 或 admin / Admin{\'@\'}123',
