@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.module';
 import { AuditService } from '../../common/services/audit.service';
 import { ROLES, SUBJECTIVE_QUESTION_TYPES } from '../../common/constants';
 import { RequestUser } from '../../common/decorators/auth.decorator';
+import { isAiGradedComment } from '../../common/utils/keyword-grade.util';
 import {
   AssignGraderDto,
   GradeAnswerDto,
@@ -113,13 +114,35 @@ export class GradingService {
     );
   }
 
+  private effectiveSubjectiveScore(record: {
+    manualScore: unknown;
+    finalScore: unknown;
+    autoScore: unknown;
+  }): number {
+    if (record.manualScore !== null) return Number(record.manualScore);
+    if (record.finalScore !== null) return Number(record.finalScore);
+    if (record.autoScore !== null) return Number(record.autoScore);
+    return 0;
+  }
+
+  private isSubjectiveGraded(record: {
+    manualScore: unknown;
+    finalScore: unknown;
+    reviewStatus: string;
+  }): boolean {
+    if (record.manualScore !== null) return true;
+    if (record.reviewStatus === 'APPROVED' && record.finalScore !== null) return true;
+    return false;
+  }
+
   private queueStatus(
     attempt: { status: AttemptStatus },
-    subjective: Array<{ manualScore: unknown }>,
+    subjective: Array<{ manualScore: unknown; finalScore: unknown; reviewStatus: string }>,
   ): 'pending' | 'in_progress' | 'completed' {
     if (attempt.status === 'COMPLETED') return 'completed';
-    const gradedCount = subjective.filter((r) => r.manualScore !== null).length;
+    const gradedCount = subjective.filter((r) => this.isSubjectiveGraded(r)).length;
     if (gradedCount === 0) return 'pending';
+    if (gradedCount < subjective.length) return 'in_progress';
     return 'in_progress';
   }
 
@@ -170,7 +193,10 @@ export class GradingService {
         const status = this.queueStatus(attempt, subjective);
 
         const objectiveScore = Number(attempt.scoreRecord?.objectiveScore ?? 0);
-        const subjectiveScore = Number(attempt.scoreRecord?.subjectiveScore ?? 0);
+        const subjectiveScore = subjective.reduce(
+          (sum, r) => sum + this.effectiveSubjectiveScore(r),
+          0,
+        );
         const totalScore = Number(attempt.scoreRecord?.totalScore ?? objectiveScore + subjectiveScore);
         const passScore = Number(attempt.exam.passScore);
 
@@ -220,7 +246,12 @@ export class GradingService {
     const questions = subjective.map((record, index) => {
       const snapshot = record.questionSnapshotJson as unknown as QuestionSnapshot;
       const maxScore = scoreMap.get(record.questionId) ?? 0;
-      const graded = record.manualScore !== null;
+      const aiGraded =
+        record.manualScore === null &&
+        record.autoScore !== null &&
+        isAiGradedComment(record.reviewComment);
+      const graded = this.isSubjectiveGraded(record);
+      const displayScore = this.effectiveSubjectiveScore(record);
 
       return {
         answerId: record.id,
@@ -232,7 +263,10 @@ export class GradingService {
         candidateAnswer: this.formatCandidateAnswer(snapshot.type, record.answerContentJson),
         referenceAnswer: this.formatReferenceAnswer(snapshot),
         scoringRubric: snapshot.scoringRubric ?? '',
+        autoScore: record.autoScore !== null ? Number(record.autoScore) : null,
         manualScore: record.manualScore !== null ? Number(record.manualScore) : null,
+        displayScore,
+        aiGraded,
         reviewComment: record.reviewComment,
         reviewStatus: record.reviewStatus,
         graded,
@@ -243,7 +277,7 @@ export class GradingService {
 
     const objectiveScore = Number(attempt.scoreRecord?.objectiveScore ?? 0);
     const subjectiveScore = subjective.reduce(
-      (sum, r) => sum + (r.manualScore !== null ? Number(r.manualScore) : 0),
+      (sum, r) => sum + this.effectiveSubjectiveScore(r),
       0,
     );
     const passScore = Number(attempt.exam.passScore);
@@ -275,8 +309,8 @@ export class GradingService {
     dto: GradeAnswerDto,
   ) {
     const attempt = await this.getAttemptContext(attemptId);
-    if (attempt.status !== 'GRADING') {
-      throw new BadRequestException('Attempt grading is already finalized');
+    if (!['GRADING', 'COMPLETED'].includes(attempt.status)) {
+      throw new BadRequestException('Attempt is not available for grading');
     }
     if (!this.canGradeAttempt(attempt, user)) {
       throw new ForbiddenException('This attempt is assigned to another grader');
@@ -308,12 +342,19 @@ export class GradingService {
         finalScore: dto.manualScore,
         reviewComment: dto.reviewComment,
         reviewerId: user.userId,
-        reviewStatus: 'IN_REVIEW',
+        reviewStatus: 'APPROVED',
         markedForReview: dto.markedForReview ?? record.markedForReview,
       },
     });
 
     await this.recalculateDraftScores(attemptId);
+
+    if (attempt.status === 'COMPLETED') {
+      await this.prisma.examAttempt.update({
+        where: { id: attemptId },
+        data: { needsQualityReview: true },
+      });
+    }
 
     await this.auditService.log({
       actorId: user.userId,
@@ -338,7 +379,7 @@ export class GradingService {
     const attempt = await this.getAttemptContext(attemptId);
     const subjective = this.subjectiveRecords(attempt);
     const subjectiveScore = subjective.reduce(
-      (sum, r) => sum + (r.manualScore !== null ? Number(r.manualScore) : 0),
+      (sum, r) => sum + this.effectiveSubjectiveScore(r),
       0,
     );
     const objectiveScore = Number(attempt.scoreRecord?.objectiveScore ?? 0);
@@ -391,7 +432,7 @@ export class GradingService {
     }
 
     const subjective = this.subjectiveRecords(attempt);
-    const ungraded = subjective.filter((r) => r.manualScore === null);
+    const ungraded = subjective.filter((r) => !this.isSubjectiveGraded(r));
     if (ungraded.length > 0) {
       throw new BadRequestException(
         `All subjective questions must be graded before submission (${ungraded.length} remaining)`,
@@ -401,12 +442,15 @@ export class GradingService {
     const scoreMap = this.scoreMapFromAttempt(attempt);
     for (const record of subjective) {
       const maxScore = scoreMap.get(record.questionId) ?? 0;
-      if (Number(record.manualScore) > maxScore) {
+      if (this.effectiveSubjectiveScore(record) > maxScore) {
         throw new BadRequestException('One or more scores exceed the maximum allowed');
       }
     }
 
-    const subjectiveScore = subjective.reduce((sum, r) => sum + Number(r.manualScore), 0);
+    const subjectiveScore = subjective.reduce(
+      (sum, r) => sum + this.effectiveSubjectiveScore(r),
+      0,
+    );
     const objectiveScore = Number(attempt.scoreRecord?.objectiveScore ?? 0);
     const totalScore = objectiveScore + subjectiveScore;
     const passScore = Number(attempt.exam.passScore);
@@ -414,12 +458,14 @@ export class GradingService {
 
     await this.prisma.$transaction(async (tx) => {
       for (const record of subjective) {
+        const finalScore = this.effectiveSubjectiveScore(record);
         await tx.answerRecord.update({
           where: { id: record.id },
           data: {
-            finalScore: record.manualScore,
+            finalScore,
+            manualScore: record.manualScore ?? finalScore,
             reviewStatus: 'APPROVED',
-            reviewerId: user.userId,
+            reviewerId: record.manualScore !== null ? user.userId : record.reviewerId,
           },
         });
       }

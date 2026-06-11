@@ -34,6 +34,9 @@ export interface GradingQuestion {
   referenceAnswer: string;
   scoringRubric: string;
   manualScore: number | null;
+  autoScore?: number | null;
+  displayScore?: number;
+  aiGraded?: boolean;
   reviewComment?: string | null;
   reviewStatus: string;
   graded: boolean;

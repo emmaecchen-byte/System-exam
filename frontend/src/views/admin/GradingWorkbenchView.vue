@@ -39,11 +39,12 @@ const passFail = computed(() => {
   return { label: pass ? t('common.pass') : t('common.fail'), pass };
 });
 
-const isReadOnly = computed(() => detail.value?.attemptStatus === 'COMPLETED');
+/** Graders can always override scores, including after AI auto-graded completion. */
+const isReadOnly = computed(() => false);
 
 function initForm(questions: GradingQuestion[]) {
   for (const q of questions) {
-    scores[q.answerId] = q.manualScore ?? 0;
+    scores[q.answerId] = q.manualScore ?? q.displayScore ?? q.autoScore ?? 0;
     comments[q.answerId] = q.reviewComment ?? '';
     marked[q.answerId] = q.markedForReview;
   }
@@ -224,6 +225,16 @@ onMounted(load);
           <p>{{ q.scoringRubric }}</p>
         </div>
 
+        <el-alert
+          v-if="q.aiGraded"
+          type="info"
+          :closable="false"
+          show-icon
+          class="ai-grade-alert"
+          :title="t('grading.aiGradedTitle', { score: q.autoScore ?? 0, max: q.maxScore })"
+          :description="q.reviewComment?.replace(/^\[AI\]\s*/, '') ?? ''"
+        />
+
         <div class="grade-row">
           <el-form-item :label="t('grading.scoreLabel')" class="score-input">
             <el-input-number
@@ -306,6 +317,9 @@ onMounted(load);
 }
 .question-card {
   border-radius: 12px;
+}
+.ai-grade-alert {
+  margin-bottom: 12px;
 }
 .q-head {
   display: flex;

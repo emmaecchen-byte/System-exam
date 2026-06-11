@@ -121,7 +121,7 @@ async function confirmImport() {
       </el-row>
 
       <el-alert
-        v-if="validation.answerKeyVoided"
+        v-if="validation.answerKeyDetected"
         type="warning"
         show-icon
         :closable="false"

@@ -3,6 +3,7 @@ import { ContentStatus, QuestionType } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import mammoth from 'mammoth';
 import { AuditService } from '../../common/services/audit.service';
+import { extractKeywords } from '../../common/utils/keyword-grade.util';
 import { PrismaService } from '../../prisma/prisma.module';
 import { QuestionsService } from './questions.service';
 import {
@@ -344,11 +345,11 @@ export class QuestionImportService {
     }
 
     const importWarnings: string[] = [];
-    if (parsed.answerKeyVoided) {
+    if (parsed.answerKeyDetected) {
       importWarnings.push(
         parsed.answerKeyLayout === 'chinese_reference_section'
-          ? 'Detected bundled answer key (参考答案). Questions were imported without correct answers — add answers manually in the question bank.'
-          : 'Detected bundled answer key section. Questions were imported without correct answers — add answers manually in the question bank.',
+          ? 'Detected bundled answer key (参考答案). Answers were imported for AI auto-grading and are hidden from candidates.'
+          : 'Detected answer key content. Answers were imported for AI auto-grading and are hidden from candidates.',
       );
     }
 
@@ -357,7 +358,6 @@ export class QuestionImportService {
       [],
       undefined,
       undefined,
-      { omitAnswers: parsed.answerKeyVoided, importAsDraft: parsed.answerKeyVoided },
     );
     return {
       ...built,
@@ -621,8 +621,9 @@ export class QuestionImportService {
       };
     }
 
+    const keywords = extractKeywords(answerRaw);
     return {
-      standardAnswerJson: { reference: answerRaw },
+      standardAnswerJson: { reference: answerRaw, keywords },
       scoringRubric: answerRaw,
     };
   }

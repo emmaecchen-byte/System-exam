@@ -227,15 +227,6 @@ function splitBodyBeforeAnswerKey(text: string, layout: AnswerKeyLayout): string
   return text;
 }
 
-function stripFieldsAnswerData(fields: ExtractedImportRow): ExtractedImportRow {
-  return {
-    ...fields,
-    answerRaw: '',
-    scoringRubric: undefined,
-    explanation: fields.explanation,
-  };
-}
-
 function inferChineseTypeRaw(sectionTitle: string): string {
   const title = sectionTitle.trim();
   if (/选择题/.test(title)) return '选择题';
@@ -543,35 +534,29 @@ export interface PdfExamParseResult {
 
 /**
  * Parse exam-question PDF text (English template or Chinese IQC-style papers).
- * When a bundled answer-key section is detected it is stripped and never merged into questions.
+ * Bundled answer keys are merged into questions for AI auto-grading (not exposed to candidates).
  */
 export function parsePdfExamText(text: string): PdfExamParseResult {
   const answerKeyLayout = detectAnswerKeyLayout(text);
   const answerKeyDetected = answerKeyLayout !== null;
-  const voidAnswerKey = answerKeyDetected;
+  const splitTrailingEnglishKey = answerKeyLayout === 'english_trailing_section';
 
-  const english = parseEnglishPdfExamText(text, { voidAnswerKey });
+  const english = parseEnglishPdfExamText(text, { voidAnswerKey: splitTrailingEnglishKey });
   if (english.length) {
-    const rows = voidAnswerKey ? english.map((row) => ({
-      ...row,
-      fields: stripFieldsAnswerData(row.fields),
-    })) : english;
     return {
-      rows,
+      rows: english,
       answerKeyDetected,
-      answerKeyVoided: voidAnswerKey,
+      answerKeyVoided: false,
       answerKeyLayout,
     };
   }
 
   if (isChineseIqcExam(text)) {
-    const rows = parseChineseIqcExamText(text, { voidAnswerKey });
+    const rows = parseChineseIqcExamText(text, { voidAnswerKey: false });
     return {
-      rows: voidAnswerKey
-        ? rows.map((row) => ({ ...row, fields: stripFieldsAnswerData(row.fields) }))
-        : rows,
+      rows,
       answerKeyDetected,
-      answerKeyVoided: voidAnswerKey,
+      answerKeyVoided: false,
       answerKeyLayout: answerKeyLayout ?? 'chinese_reference_section',
     };
   }

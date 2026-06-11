@@ -1,17 +1,24 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AttemptStatus, ExamStatus, PassResult, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.module';
+import {
+  aiReviewComment,
+  gradeSubjectiveAnswer,
+} from '../../common/utils/keyword-grade.util';
 
 const OBJECTIVE_TYPES = new Set(['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TRUE_FALSE']);
 const SUBJECTIVE_TYPES = new Set(['FILL_BLANK', 'SHORT_ANSWER']);
 
 interface QuestionSnapshot {
   type: string;
+  scoringRubric?: string;
   standardAnswerJson?: {
     key?: string;
     keys?: string[];
     answers?: string[];
     reference?: string;
+    text?: string;
+    keywords?: string[];
   };
 }
 
@@ -26,7 +33,10 @@ export interface AutoGradeResult {
   attemptId: string;
   examId: string;
   objectiveScore: number;
+  subjectiveScore: number;
   hasSubjective: boolean;
+  hasPendingManual: boolean;
+  aiGradedCount: number;
   status: AttemptStatus;
   statusLabel: 'completed' | 'pending_manual';
   result: PassResult;
@@ -78,8 +88,31 @@ export class AutoGradeService {
     return this.isCorrect(questionType, standardAnswer, candidateAnswer) ? maxScore : 0;
   }
 
+  private gradeSubjective(
+    snapshot: QuestionSnapshot,
+    candidateAnswer: unknown,
+    maxScore: number,
+  ) {
+    const qType = snapshot.type as 'FILL_BLANK' | 'SHORT_ANSWER';
+    if (qType !== 'FILL_BLANK' && qType !== 'SHORT_ANSWER') {
+      return null;
+    }
+
+    const answer = (candidateAnswer ?? {}) as CandidateAnswer;
+    return gradeSubjectiveAnswer({
+      type: qType,
+      standardAnswerJson: snapshot.standardAnswerJson,
+      scoringRubric: snapshot.scoringRubric,
+      candidateAnswer: {
+        answers: answer.answers,
+        text: answer.text,
+      },
+      maxScore,
+    });
+  }
+
   /**
-   * Auto-grade an attempt's objective questions. Idempotent: safe to call multiple times.
+   * Auto-grade objective and AI-assisted subjective questions. Idempotent: safe to call multiple times.
    */
   async autoGradeAttempt(attemptId: string, examId?: string): Promise<AutoGradeResult> {
     const attempt = await this.prisma.examAttempt.findUnique({
@@ -112,7 +145,10 @@ export class AutoGradeService {
     );
 
     let objectiveScore = 0;
+    let subjectiveScore = 0;
     let hasSubjective = false;
+    let hasPendingManual = false;
+    let aiGradedCount = 0;
     let gradedObjectiveCount = 0;
     let subjectiveCount = 0;
 
@@ -125,14 +161,36 @@ export class AutoGradeService {
         if (this.isSubjectiveType(qType)) {
           hasSubjective = true;
           subjectiveCount += 1;
-          await tx.answerRecord.update({
-            where: { id: record.id },
-            data: {
-              autoScore: null,
-              finalScore: null,
-              reviewStatus: 'PENDING',
-            },
-          });
+
+          const aiResult = this.gradeSubjective(
+            snapshot,
+            record.answerContentJson,
+            maxScore,
+          );
+
+          if (aiResult?.gradable) {
+            aiGradedCount += 1;
+            subjectiveScore += aiResult.score;
+            await tx.answerRecord.update({
+              where: { id: record.id },
+              data: {
+                autoScore: aiResult.score,
+                finalScore: aiResult.score,
+                reviewStatus: 'APPROVED',
+                reviewComment: aiReviewComment(aiResult.rationale),
+              },
+            });
+          } else {
+            hasPendingManual = true;
+            await tx.answerRecord.update({
+              where: { id: record.id },
+              data: {
+                autoScore: null,
+                finalScore: null,
+                reviewStatus: 'PENDING',
+              },
+            });
+          }
           continue;
         }
 
@@ -159,11 +217,13 @@ export class AutoGradeService {
         });
       }
 
-      const status: AttemptStatus = hasSubjective ? 'GRADING' : 'COMPLETED';
+      const totalScore = objectiveScore + subjectiveScore;
       const passScore = Number(attempt.exam.passScore);
-      const result: PassResult = hasSubjective
+      const needsManual = hasPendingManual;
+      const status: AttemptStatus = needsManual ? 'GRADING' : 'COMPLETED';
+      const result: PassResult = needsManual
         ? 'PENDING'
-        : objectiveScore >= passScore
+        : totalScore >= passScore
           ? 'PASS'
           : 'FAIL';
 
@@ -172,45 +232,51 @@ export class AutoGradeService {
         data: { status },
       });
 
-      const publishResults = !hasSubjective && result !== 'PENDING';
+      const publishResults = !needsManual && result !== 'PENDING';
       await tx.scoreRecord.upsert({
         where: { attemptId },
         create: {
           attemptId,
           userId: attempt.userId,
           objectiveScore,
-          subjectiveScore: 0,
-          totalScore: objectiveScore,
+          subjectiveScore,
+          totalScore,
           passScore: attempt.exam.passScore,
           result,
           ...(publishResults ? { publishedAt: new Date(), reviewedAt: new Date() } : {}),
         },
         update: {
           objectiveScore,
-          subjectiveScore: 0,
-          totalScore: objectiveScore,
+          subjectiveScore,
+          totalScore,
           result,
           ...(publishResults ? { publishedAt: new Date(), reviewedAt: new Date() } : {}),
         },
       });
 
-      const examStatus: ExamStatus = hasSubjective ? 'PENDING_GRADING' : 'COMPLETED';
+      const examStatus: ExamStatus = needsManual ? 'PENDING_GRADING' : 'COMPLETED';
       await tx.exam.update({
         where: { id: attempt.examId },
         data: { status: examStatus },
       });
     });
 
+    const totalScore = objectiveScore + subjectiveScore;
+    const passScore = Number(attempt.exam.passScore);
+
     return {
       attemptId,
       examId: attempt.examId,
       objectiveScore,
+      subjectiveScore,
       hasSubjective,
-      status: hasSubjective ? 'GRADING' : 'COMPLETED',
-      statusLabel: hasSubjective ? 'pending_manual' : 'completed',
-      result: hasSubjective
+      hasPendingManual,
+      aiGradedCount,
+      status: hasPendingManual ? 'GRADING' : 'COMPLETED',
+      statusLabel: hasPendingManual ? 'pending_manual' : 'completed',
+      result: hasPendingManual
         ? 'PENDING'
-        : objectiveScore >= Number(attempt.exam.passScore)
+        : totalScore >= passScore
           ? 'PASS'
           : 'FAIL',
       gradedObjectiveCount,
@@ -226,8 +292,13 @@ export class AutoGradeService {
     idempotent: boolean,
   ): AutoGradeResult {
     const score = attempt.scoreRecord!;
-    const subjectiveCount = attempt.answerRecords.filter((r) =>
+    const subjectiveRecords = attempt.answerRecords.filter((r) =>
       this.isSubjectiveType((r.questionSnapshotJson as unknown as QuestionSnapshot).type),
+    );
+    const subjectiveCount = subjectiveRecords.length;
+    const hasPendingManual = subjectiveRecords.some((r) => r.reviewStatus === 'PENDING');
+    const aiGradedCount = subjectiveRecords.filter(
+      (r) => r.reviewStatus === 'APPROVED' && r.manualScore === null && r.autoScore !== null,
     ).length;
     const gradedObjectiveCount = attempt.answerRecords.filter((r) =>
       this.isObjectiveType((r.questionSnapshotJson as unknown as QuestionSnapshot).type),
@@ -237,7 +308,10 @@ export class AutoGradeService {
       attemptId: attempt.id,
       examId: attempt.examId,
       objectiveScore: Number(score.objectiveScore),
+      subjectiveScore: Number(score.subjectiveScore),
       hasSubjective: subjectiveCount > 0,
+      hasPendingManual,
+      aiGradedCount,
       status: attempt.status,
       statusLabel: attempt.status === 'GRADING' ? 'pending_manual' : 'completed',
       result: score.result,
