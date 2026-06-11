@@ -3,6 +3,7 @@ import {
   IsArray,
   IsIn,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Max,
@@ -75,4 +76,9 @@ export class ResultsQueryDto {
 export class RegradeAttemptDto {
   @IsString()
   reason!: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  adjustedScore?: number;
 }

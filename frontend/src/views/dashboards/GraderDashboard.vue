@@ -21,7 +21,7 @@ onMounted(async () => {
 });
 
 function openQueue(tab: 'need' | 'finished') {
-  router.push({ path: '/grading/queue', query: tab === 'finished' ? { tab: 'finished' } : undefined });
+  router.push({ path: '/admin/grading', query: tab === 'finished' ? { tab: 'finished' } : undefined });
 }
 </script>
 

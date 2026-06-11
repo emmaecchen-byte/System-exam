@@ -139,8 +139,9 @@ model User {
   examsResultsPublished   Exam[]            @relation("ExamResultsPublisher")
   participants            ExamParticipant[]
   attempts         ExamAttempt[]
-  scoreRecords     ScoreRecord[]
-  reviews          AnswerRecord[]    @relation("AnswerReviewer")
+  scoreRecords            ScoreRecord[]
+  scoreRecordsPublished   ScoreRecord[]     @relation("ScorePublisher")
+  reviews                 AnswerRecord[]  @relation("AnswerReviewer")
   auditLogs        AuditLog[]
   assignedAttempts ExamAttempt[]     @relation("AssignedGrader")
 
@@ -441,11 +442,13 @@ model ScoreRecord {
   result          PassResult @default(PENDING)
   reviewedAt      DateTime?  @map("reviewed_at")
   publishedAt     DateTime?  @map("published_at")
+  publishedById   String?    @map("published_by")
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
 
-  attempt ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  user    User        @relation(fields: [userId], references: [id])
+  attempt     ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id])
+  publishedBy User?       @relation("ScorePublisher", fields: [publishedById], references: [id])
 
   @@map("score_records")
 }

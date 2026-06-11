@@ -22,7 +22,7 @@ export const ROLE_HOME_ROUTES: Record<RoleCode, string> = {
   [ROLES.ADMIN]: '/admin/dashboard',
   [ROLES.EXAM_ADMIN]: '/exam-sessions',
   [ROLES.GRADER]: '/grading',
-  [ROLES.CANDIDATE]: '/candidate',
+  [ROLES.CANDIDATE]: '/student/exams',
 };
 
 export const ROLE_LABELS: Record<RoleCode, string> = {

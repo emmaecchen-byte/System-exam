@@ -84,8 +84,32 @@ export function fetchResultDetail(attemptId: string) {
   return api.get<ResultDetail>(`/admin/attempts/${attemptId}/detailed-results`);
 }
 
-export function regradeAttempt(attemptId: string, reason: string) {
-  return api.post(`/admin/attempts/${attemptId}/regrade`, { reason });
+export interface ExamResultStats {
+  totalParticipants: number;
+  completedCount: number;
+  passRate: number;
+  failRate: number;
+  avgScore: number;
+  highestScore: number;
+  lowestScore: number;
+}
+
+export function fetchExamStats(examId: string) {
+  return api.get<ExamResultStats>(`/admin/exams/${examId}/stats`);
+}
+
+export function regradeAttempt(
+  attemptId: string,
+  data: { reason: string; adjustedScore?: number },
+) {
+  return api.post(`/admin/attempts/${attemptId}/regrade`, data);
+}
+
+export async function exportExamResults(examId: string) {
+  const { saveAs } = await import('file-saver');
+  const response = await api.get(`/admin/exams/${examId}/export`, { responseType: 'blob' });
+  const date = new Date().toISOString().slice(0, 10);
+  saveAs(new Blob([response.data]), `exam_results_${examId}_${date}.xlsx`);
 }
 
 export async function exportResults(params: ResultsQuery) {

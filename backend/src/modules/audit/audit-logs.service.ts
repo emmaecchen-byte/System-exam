@@ -33,6 +33,7 @@ export class AuditLogsService {
     if (query.search?.trim()) {
       const term = query.search.trim();
       where.OR = [
+        { objectId: { contains: term } },
         { objectName: { contains: term } },
         { reason: { contains: term } },
         { objectType: { contains: term } },
@@ -144,8 +145,58 @@ export class AuditLogsService {
       }));
   }
 
-  async export(query: AuditLogsQueryDto, format: 'xlsx' | 'json' = 'xlsx') {
+  async export(query: AuditLogsQueryDto, format: 'xlsx' | 'json' | 'csv' = 'xlsx') {
     const { data } = await this.list({ ...query, page: 1, pageSize: 100000 });
+
+    if (format === 'csv') {
+      const headers = [
+        'Timestamp',
+        'Actor',
+        'Role',
+        'Action',
+        'Object Type',
+        'Object ID',
+        'IP Address',
+        'Device Info',
+        'Reason',
+        'Before Data',
+        'After Data',
+      ];
+      const escape = (value: unknown) => {
+        const text = value === null || value === undefined ? '' : String(value);
+        return `"${text.replace(/"/g, '""')}"`;
+      };
+      const lines = [
+        headers.join(','),
+        ...data.map((row) => {
+          const device =
+            row.deviceInfo?.browser || row.deviceInfo?.os
+              ? [row.deviceInfo.browser, row.deviceInfo.os].filter(Boolean).join(' / ')
+              : '';
+          return [
+            new Date(row.timestamp).toISOString(),
+            row.actorName,
+            row.actorRole ?? '',
+            row.actionLabel,
+            row.objectType,
+            row.objectId ?? '',
+            row.ipAddress ?? '',
+            device,
+            row.reason ?? '',
+            row.beforeData ? JSON.stringify(row.beforeData) : '',
+            row.afterData ? JSON.stringify(row.afterData) : '',
+          ]
+            .map(escape)
+            .join(',');
+        }),
+      ];
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      return {
+        filename: `audit_logs_${timestamp}.csv`,
+        buffer: Buffer.from(lines.join('\n'), 'utf-8'),
+        contentType: 'text/csv; charset=utf-8',
+      };
+    }
 
     if (format === 'json') {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');

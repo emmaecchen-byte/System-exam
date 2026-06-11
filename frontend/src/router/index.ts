@@ -18,6 +18,7 @@ declare module 'vue-router' {
 }
 
 const superAdminAndAdmin: RoleCode[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN];
+const examManageRoles: RoleCode[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.EXAM_ADMIN];
 const resultsRoles: RoleCode[] = [
   ROLES.EXAM_ADMIN,
   ROLES.SUPER_ADMIN,
@@ -77,8 +78,28 @@ const routes: RouteRecordRaw[] = [
       { path: '', redirect: '/admin/dashboard' },
       {
         path: 'dashboard',
-        component: () => import('@/views/dashboards/RoleDashboardView.vue'),
+        component: () => import('@/views/admin/Dashboard.vue'),
         meta: { titleKey: 'meta.dashboard' },
+      },
+      {
+        path: 'users',
+        component: () => import('@/views/admin/UserManagement.vue'),
+        meta: { titleKey: 'meta.userManagement', permission: 'user:manage' },
+      },
+      {
+        path: 'departments',
+        component: () => import('@/views/admin/DepartmentManagement.vue'),
+        meta: { titleKey: 'meta.departments', permission: 'user:manage' },
+      },
+      {
+        path: 'roles',
+        component: () => import('@/views/admin/RolePermission.vue'),
+        meta: { titleKey: 'meta.roles', permission: 'role:manage' },
+      },
+      {
+        path: 'reports',
+        component: () => import('@/views/admin/Reports.vue'),
+        meta: { ...resultsReportsMeta },
       },
       {
         path: 'categories',
@@ -89,6 +110,24 @@ const routes: RouteRecordRaw[] = [
         path: 'results',
         component: () => import('@/views/admin/ResultsView.vue'),
         meta: { ...resultsReportsMeta },
+      },
+      {
+        path: 'exams/:examId/sessions',
+        component: () => import('@/views/admin/SessionManagement.vue'),
+        meta: {
+          titleKey: 'meta.sessionManagement',
+          roles: examManageRoles,
+          permission: 'exam:manage',
+        },
+      },
+      {
+        path: 'exams/:examId/results',
+        component: () => import('@/views/admin/ExamResults.vue'),
+        meta: {
+          titleKey: 'meta.examResults',
+          roles: examManageRoles,
+          permission: 'result:export',
+        },
       },
     ],
   },
@@ -107,14 +146,14 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
-    path: '/audit-logs',
+    path: '/admin/audit-logs',
     component: () => import('@/layouts/AdminLayout.vue'),
-    meta: { requiresAuth: true, roles: superAdminAndAdmin, permission: 'audit:view' },
+    meta: { requiresAuth: true, roles: [ROLES.SUPER_ADMIN], permission: 'audit:view' },
     children: [
       {
         path: '',
-        component: () => import('@/views/admin/AuditLogsView.vue'),
-        meta: { titleKey: 'meta.auditLogs', permission: 'audit:view' },
+        component: () => import('@/views/admin/AuditLogs.vue'),
+        meta: { titleKey: 'meta.auditLogs', roles: [ROLES.SUPER_ADMIN] },
       },
     ],
   },
@@ -139,6 +178,16 @@ const routes: RouteRecordRaw[] = [
         path: ':id/edit',
         component: () => import('@/views/admin/ExamEditView.vue'),
         meta: { titleKey: 'meta.editExam', permission: 'exam:manage' },
+      },
+      {
+        path: ':examId/sessions',
+        component: () => import('@/views/admin/SessionManagement.vue'),
+        meta: { titleKey: 'meta.sessionManagement', permission: 'exam:manage' },
+      },
+      {
+        path: ':examId/results',
+        component: () => import('@/views/admin/ExamResults.vue'),
+        meta: { titleKey: 'meta.examResults', permission: 'result:export' },
       },
     ],
   },
@@ -197,6 +246,16 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/admin/ExamEditView.vue'),
         meta: { titleKey: 'meta.editExam', permission: 'exam:manage' },
       },
+      {
+        path: ':examId/sessions',
+        component: () => import('@/views/admin/SessionManagement.vue'),
+        meta: { titleKey: 'meta.sessionManagement', permission: 'exam:manage' },
+      },
+      {
+        path: ':examId/results',
+        component: () => import('@/views/admin/ExamResults.vue'),
+        meta: { titleKey: 'meta.examResults', permission: 'result:export' },
+      },
     ],
   },
   {
@@ -228,7 +287,21 @@ const routes: RouteRecordRaw[] = [
     ],
   },
 
-  // Grader
+  // Grader workbench
+  {
+    path: '/admin/grading',
+    component: () => import('@/layouts/GraderLayout.vue'),
+    meta: { requiresAuth: true, roles: graderRoles, permission: 'grading:manage' },
+    children: [
+      {
+        path: '',
+        component: () => import('@/views/admin/GradingWorkbench.vue'),
+        meta: { titleKey: 'meta.gradingQueue' },
+      },
+    ],
+  },
+
+  // Grader portal (dashboard + legacy routes)
   {
     path: '/grading',
     component: () => import('@/layouts/GraderLayout.vue'),
@@ -239,33 +312,41 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/dashboards/GraderDashboard.vue'),
         meta: { titleKey: 'meta.gradingDashboard' },
       },
-      {
-        path: 'queue',
-        component: () => import('@/views/admin/GradingQueueView.vue'),
-        meta: { titleKey: 'meta.gradingQueue' },
-      },
+      { path: 'queue', redirect: '/admin/grading' },
       {
         path: 'attempts/:attemptId',
         component: () => import('@/views/admin/GradingWorkbenchView.vue'),
         meta: { titleKey: 'meta.gradeAttempt' },
       },
-      { path: 'pending', redirect: '/grading/queue' },
+      { path: 'pending', redirect: '/admin/grading' },
     ],
   },
 
-  // Candidate
+  // Candidate / student portal
   {
-    path: '/candidate',
+    path: '/student',
     component: () => import('@/layouts/StudentLayout.vue'),
     meta: { requiresAuth: true, roles: [ROLES.CANDIDATE] },
     children: [
+      { path: '', redirect: '/student/exams' },
       {
-        path: '',
-        component: () => import('@/views/student/MyExamsView.vue'),
+        path: 'exams',
+        component: () => import('@/views/candidate/MyExams.vue'),
         meta: { titleKey: 'meta.myExams' },
+      },
+      {
+        path: 'exams/:examId/instructions',
+        component: () => import('@/views/candidate/ExamInstructions.vue'),
+        meta: { titleKey: 'meta.examInstructions' },
+      },
+      {
+        path: 'attempts/:attemptId/success',
+        component: () => import('@/views/candidate/SubmissionSuccess.vue'),
+        meta: { titleKey: 'meta.examSubmitted' },
       },
     ],
   },
+  { path: '/candidate', redirect: '/student/exams' },
   {
     path: '/take-exam',
     component: () => import('@/layouts/StudentLayout.vue'),
@@ -278,25 +359,22 @@ const routes: RouteRecordRaw[] = [
       },
       {
         path: 'attempts/:attemptId/exam',
-        component: () => import('@/views/student/ExamTakingView.vue'),
+        component: () => import('@/views/candidate/ExamTaking.vue'),
         meta: { titleKey: 'meta.takeExam', examMode: true },
       },
       {
         path: 'attempts/:attemptId/result',
-        component: () => import('@/views/student/ResultView.vue'),
+        component: () => import('@/views/candidate/ExamResult.vue'),
         meta: { titleKey: 'meta.examResult' },
       },
     ],
   },
 
   // Legacy redirects
-  { path: '/student', redirect: '/candidate' },
-  { path: '/student/:pathMatch(.*)*', redirect: (to) => `/take-exam/${to.params.pathMatch}` },
   { path: '/admin/questions', redirect: '/questions' },
   { path: '/admin/papers', redirect: '/papers' },
   { path: '/admin/exams', redirect: '/exams' },
-  { path: '/admin/grading', redirect: '/grading' },
-  { path: '/admin/audit-logs', redirect: '/audit-logs' },
+  { path: '/audit-logs', redirect: '/admin/audit-logs' },
   { path: '/candidate-results', redirect: '/exam-admin/results' },
 ];
 

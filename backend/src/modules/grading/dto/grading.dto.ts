@@ -23,6 +23,10 @@ export class GradingQueueQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @IsOptional()
+  @IsIn(['FILL_BLANK', 'SHORT_ANSWER'])
+  questionType?: 'FILL_BLANK' | 'SHORT_ANSWER';
 }
 
 export class GradeAnswerDto {

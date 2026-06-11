@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsObject,
   IsOptional,
   IsString,
@@ -61,5 +62,22 @@ export class SubmitExamDto {
 
 export class CandidateAuditEventDto {
   @IsString()
-  eventType!: 'PAGE_LEAVE' | 'SCREEN_SWITCH';
+  eventType!: string;
+
+  @IsOptional()
+  @IsString()
+  timestamp?: string;
+
+  @IsOptional()
+  @IsString()
+  action?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  duration_seconds?: number;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown>;
 }

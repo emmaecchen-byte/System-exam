@@ -482,6 +482,9 @@ watch(
           </p>
         </div>
         <div class="results-publish-actions">
+          <el-button @click="router.push(`${examBasePath}/${examId}/results`)">
+            {{ t('examResults.title') }}
+          </el-button>
           <el-button
             v-if="!exam?.resultsPublished"
             type="success"
@@ -561,15 +564,24 @@ watch(
         <el-card shadow="never">
           <div class="session-header">
             <span>{{ t('examEdit.sessionCount', { count: sessions.length }) }}</span>
-            <el-button
-              v-if="exam?.isEditable"
-              type="primary"
-              size="small"
-              :icon="Plus"
-              @click="openSessionDialog()"
-            >
-              {{ t('examEdit.addSession') }}
-            </el-button>
+            <div class="session-header-actions">
+              <el-button
+                v-if="examId"
+                size="small"
+                @click="router.push(`${examBasePath}/${examId}/sessions`)"
+              >
+                {{ t('exams.manageSessions') }}
+              </el-button>
+              <el-button
+                v-if="exam?.isEditable"
+                type="primary"
+                size="small"
+                :icon="Plus"
+                @click="openSessionDialog()"
+              >
+                {{ t('examEdit.addSession') }}
+              </el-button>
+            </div>
           </div>
           <el-table :data="sessions" stripe>
             <el-table-column prop="name" :label="t('examEdit.colSessionName')" />
@@ -733,7 +745,8 @@ watch(
 .page-header h2 { margin: 8px 0 4px; }
 .meta { display: flex; gap: 12px; align-items: center; color: #6b7280; font-size: 14px; }
 .hint { margin: 4px 0 0; font-size: 12px; color: #6b7280; }
-.session-header { display: flex; justify-content: space-between; margin-bottom: 12px; }
+.session-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.session-header-actions { display: flex; gap: 8px; }
 .results-publish-card { border-radius: 12px; }
 .results-publish-row {
   display: flex;

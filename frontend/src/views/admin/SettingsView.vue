@@ -341,7 +341,7 @@ function onUserManagement() {
                 <strong>{{ t('settings.exportAuditLogs') }}</strong>
                 <p>{{ t('settings.exportAuditLogsDesc') }}</p>
               </div>
-              <router-link to="/audit-logs" custom v-slot="{ navigate }">
+              <router-link to="/admin/audit-logs" custom v-slot="{ navigate }">
                 <el-button @click="navigate">{{ t('settings.openAuditLogs') }}</el-button>
               </router-link>
             </div>

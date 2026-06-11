@@ -13,7 +13,7 @@ const roleLabel = useRoleLabels();
 
 const menus = [
   { path: '/grading', labelKey: 'nav.dashboard' },
-  { path: '/grading/queue', labelKey: 'nav.gradingQueue' },
+  { path: '/admin/grading', labelKey: 'nav.gradingQueue' },
   ...(auth.hasPermission('result:view')
     ? [{ path: '/results', labelKey: 'nav.resultsReports' }]
     : []),

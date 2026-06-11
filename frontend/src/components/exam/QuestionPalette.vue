@@ -64,6 +64,19 @@ const gridClass = computed(() => (props.compact ? 'palette-grid compact' : 'pale
 .palette-grid.compact {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
+
+@media (max-width: 768px) {
+  .palette-grid.compact {
+    grid-template-columns: repeat(5, minmax(44px, 1fr));
+    gap: 10px;
+  }
+}
+
+@media (max-width: 375px) {
+  .palette-grid.compact {
+    grid-template-columns: repeat(4, minmax(44px, 1fr));
+  }
+}
 .palette-item {
   min-height: 40px;
   min-width: 40px;
@@ -126,6 +139,15 @@ const gridClass = computed(() => (props.compact ? 'palette-grid compact' : 'pale
   .palette-item {
     min-height: 44px;
     min-width: 44px;
+    font-size: 15px;
+    border-radius: 10px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .legend {
+    font-size: 11px;
+    gap: 6px 10px;
   }
 }
 </style>

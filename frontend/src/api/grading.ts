@@ -1,6 +1,10 @@
 import api from './client';
 
 export interface GradingQueueItem {
+  answerId?: string | null;
+  questionType?: string | null;
+  questionPreview?: string | null;
+  questionNumber?: number | null;
   attemptId: string;
   examId: string;
   examTitle: string;
@@ -60,19 +64,25 @@ export interface GradingAttemptDetail {
   questions: GradingQuestion[];
 }
 
+export function fetchGradingStats() {
+  return api.get<{
+    pending: number;
+    inProgress: number;
+    completed: number;
+    total: number;
+    gradedToday: number;
+    averageGradingTimeMinutes: number;
+  }>('/admin/grading/stats');
+}
+
 export function fetchGradingQueue(params?: {
   examId?: string;
   sessionId?: string;
   status?: string;
   search?: string;
+  questionType?: string;
 }) {
   return api.get<{ data: GradingQueueItem[]; total: number }>('/admin/grading/queue', { params });
-}
-
-export function fetchGradingStats() {
-  return api.get<{ pending: number; inProgress: number; completed: number; total: number }>(
-    '/admin/grading/stats',
-  );
 }
 
 export function fetchGradingAttempt(attemptId: string) {

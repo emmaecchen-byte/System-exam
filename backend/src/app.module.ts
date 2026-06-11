@@ -13,6 +13,8 @@ import { ResultsModule } from './modules/results/results.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { StudentModule } from './modules/student/student.module';
 import { QrEntryModule } from './modules/qr-entry/qr-entry.module';
+import { TasksModule } from './modules/tasks/tasks.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -32,6 +34,8 @@ import { AppController } from './app.controller';
     AuditModule,
     StudentModule,
     QrEntryModule,
+    TasksModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

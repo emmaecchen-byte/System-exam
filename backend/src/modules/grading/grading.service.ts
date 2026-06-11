@@ -181,56 +181,86 @@ export class GradingService {
         session: { select: { id: true, name: true } },
         scoreRecord: true,
         assignedGrader: { select: { id: true, name: true } },
-        answerRecords: {
-          include: { question: { select: { type: true } } },
-        },
+        answerRecords: true,
       },
       orderBy: { submittedAt: 'asc' },
     });
 
-    const items = attempts
-      .map((attempt) => {
-        const subjective = this.subjectiveRecords(attempt);
-        const pendingCount = subjective.filter((r) => r.reviewStatus === 'PENDING').length;
-        const status = this.queueStatus(attempt, subjective);
+    const items: Array<Record<string, unknown>> = [];
 
-        const objectiveScore = Number(attempt.scoreRecord?.objectiveScore ?? 0);
-        const subjectiveScore = subjective.reduce(
-          (sum, r) => sum + this.effectiveSubjectiveScore(r),
-          0,
-        );
-        const totalScore = Number(attempt.scoreRecord?.totalScore ?? objectiveScore + subjectiveScore);
-        const passScore = Number(attempt.exam.passScore);
+    for (const attempt of attempts) {
+      const subjective = this.subjectiveRecords(attempt);
+      const pendingRecords = subjective.filter((r) => !this.isSubjectiveGraded(r));
+      const status = this.queueStatus(attempt, subjective);
 
-        return {
-          attemptId: attempt.id,
-          examId: attempt.examId,
-          examTitle: attempt.exam.title,
-          sessionId: attempt.sessionId,
-          sessionName: attempt.session?.name,
-          candidateName: attempt.user.name,
-          candidateEmployeeNo: attempt.user.employeeNo,
-          submittedAt: attempt.submittedAt,
-          gradedAt: attempt.scoreRecord?.reviewedAt ?? null,
-          objectiveScore,
-          subjectiveScore,
-          totalScore,
-          passScore,
-          result: attempt.scoreRecord?.result ?? null,
-          pendingQuestionCount: pendingCount,
-          totalSubjectiveCount: subjective.length,
-          gradingStatus: status,
-          attemptStatus: attempt.status,
-          assignedGrader: attempt.assignedGrader,
-          needsQualityReview: attempt.needsQualityReview,
-        };
-      })
-      .filter((item) => {
-        if (!query.status || query.status === 'all') return true;
-        return item.gradingStatus === query.status;
-      });
+      const objectiveScore = Number(attempt.scoreRecord?.objectiveScore ?? 0);
+      const subjectiveScore = subjective.reduce(
+        (sum, r) => sum + this.effectiveSubjectiveScore(r),
+        0,
+      );
+      const totalScore = Number(attempt.scoreRecord?.totalScore ?? objectiveScore + subjectiveScore);
+      const passScore = Number(attempt.exam.passScore);
 
-    return { data: items, total: items.length };
+      const base = {
+        attemptId: attempt.id,
+        examId: attempt.examId,
+        examTitle: attempt.exam.title,
+        sessionId: attempt.sessionId,
+        sessionName: attempt.session?.name,
+        candidateName: attempt.user.name,
+        candidateEmployeeNo: attempt.user.employeeNo,
+        submittedAt: attempt.submittedAt,
+        gradedAt: attempt.scoreRecord?.reviewedAt ?? null,
+        objectiveScore,
+        subjectiveScore,
+        totalScore,
+        passScore,
+        result: attempt.scoreRecord?.result ?? null,
+        pendingQuestionCount: pendingRecords.length,
+        totalSubjectiveCount: subjective.length,
+        gradingStatus: status,
+        attemptStatus: attempt.status,
+        assignedGrader: attempt.assignedGrader,
+        needsQualityReview: attempt.needsQualityReview,
+      };
+
+      if (status === 'completed') {
+        if (!query.status || query.status === 'all' || query.status === 'completed') {
+          items.push({
+            ...base,
+            answerId: null,
+            questionType: null,
+            questionPreview: null,
+            questionNumber: null,
+          });
+        }
+        continue;
+      }
+
+      const rows = pendingRecords.length ? pendingRecords : subjective;
+      for (const record of rows) {
+        const snapshot = record.questionSnapshotJson as unknown as QuestionSnapshot;
+        if (query.questionType && snapshot.type !== query.questionType) continue;
+
+        const questionNumber =
+          subjective.findIndex((r) => r.id === record.id) + 1;
+
+        items.push({
+          ...base,
+          answerId: record.id,
+          questionType: snapshot.type,
+          questionPreview: snapshot.stem.slice(0, 120),
+          questionNumber,
+        });
+      }
+    }
+
+    const filtered = items.filter((item) => {
+      if (!query.status || query.status === 'all') return true;
+      return item.gradingStatus === query.status;
+    });
+
+    return { data: filtered, total: filtered.length };
   }
 
   async getAttemptForGrading(attemptId: string, user: RequestUser) {
@@ -595,7 +625,48 @@ export class GradingService {
       if (attempt.status === 'COMPLETED') completed += 1;
     }
 
-    return { pending, inProgress, completed, total: attempts.length };
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const gradedToday = await this.prisma.scoreRecord.count({
+      where: {
+        reviewedAt: { gte: todayStart },
+        attempt: {
+          answerRecords: {
+            some: { question: { type: { in: [...SUBJECTIVE_QUESTION_TYPES] } } },
+          },
+        },
+      },
+    });
+
+    const recentReviewed = await this.prisma.scoreRecord.findMany({
+      where: { reviewedAt: { not: null } },
+      include: { attempt: { select: { submittedAt: true } } },
+      orderBy: { reviewedAt: 'desc' },
+      take: 50,
+    });
+
+    let averageGradingTimeMinutes = 0;
+    const durations = recentReviewed
+      .filter((s) => s.reviewedAt && s.attempt.submittedAt)
+      .map(
+        (s) =>
+          (s.reviewedAt!.getTime() - s.attempt.submittedAt!.getTime()) / 60_000,
+      );
+    if (durations.length) {
+      averageGradingTimeMinutes = Math.round(
+        durations.reduce((a, b) => a + b, 0) / durations.length,
+      );
+    }
+
+    return {
+      pending,
+      inProgress,
+      completed,
+      total: attempts.length,
+      gradedToday,
+      averageGradingTimeMinutes,
+    };
   }
 
   /** @deprecated Use getQueue */

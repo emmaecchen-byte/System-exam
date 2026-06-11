@@ -60,7 +60,7 @@ export function fetchAuditActors() {
   return api.get<Array<{ id: string; name: string; employeeNo: string }>>('/admin/audit-logs/actors');
 }
 
-export async function exportAuditLogs(params: AuditLogsQuery, format: 'xlsx' | 'json' = 'xlsx') {
+export async function exportAuditLogs(params: AuditLogsQuery, format: 'xlsx' | 'json' | 'csv' = 'xlsx') {
   const response = await api.get('/admin/audit-logs/export', {
     params: { ...serializeQuery(params), format },
     responseType: 'blob',

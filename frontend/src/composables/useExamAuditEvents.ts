@@ -1,36 +1,40 @@
 import { onMounted, onUnmounted } from 'vue';
-import { logCandidateAuditEvent } from '@/api/audit';
+import { postStudentAttemptAuditEvent } from '@/api/studentExam';
 
+/** @deprecated Prefer inline tracking in ExamTaking.vue */
 export function useExamAuditEvents(attemptId: () => string | undefined) {
-  let leaveSent = false;
+  let tabLeftAt: number | null = null;
 
-  function sendEvent(eventType: 'PAGE_LEAVE' | 'SCREEN_SWITCH') {
+  function sendEvent(eventType: string, extra: Record<string, unknown> = {}) {
     const id = attemptId();
     if (!id) return;
-    logCandidateAuditEvent(id, eventType).catch(() => {
+    postStudentAttemptAuditEvent(id, {
+      eventType,
+      timestamp: new Date().toISOString(),
+      ...extra,
+    }).catch(() => {
       /* best-effort audit */
     });
   }
 
   function onVisibilityChange() {
     if (document.visibilityState === 'hidden') {
-      sendEvent('SCREEN_SWITCH');
+      tabLeftAt = Date.now();
+      sendEvent('page_leave', { action: 'left' });
+      return;
     }
-  }
-
-  function onPageLeave() {
-    if (leaveSent) return;
-    leaveSent = true;
-    sendEvent('PAGE_LEAVE');
+    if (tabLeftAt !== null) {
+      const durationSeconds = Math.round((Date.now() - tabLeftAt) / 1000);
+      tabLeftAt = null;
+      sendEvent('page_return', { duration_seconds: durationSeconds });
+    }
   }
 
   onMounted(() => {
     document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('pagehide', onPageLeave);
   });
 
   onUnmounted(() => {
     document.removeEventListener('visibilitychange', onVisibilityChange);
-    window.removeEventListener('pagehide', onPageLeave);
   });
 }

@@ -22,7 +22,7 @@ const { t } = useI18n();
         <el-card shadow="hover">
           <h4>{{ t('dashboard.auditLogs') }}</h4>
           <p>{{ t('dashboard.auditLogsDesc') }}</p>
-          <router-link to="/audit-logs" custom v-slot="{ navigate }">
+          <router-link to="/admin/audit-logs" custom v-slot="{ navigate }">
             <el-button type="primary" link @click="navigate">{{ t('dashboard.viewLogs') }}</el-button>
           </router-link>
         </el-card>

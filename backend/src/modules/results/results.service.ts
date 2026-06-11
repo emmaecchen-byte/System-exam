@@ -316,6 +316,24 @@ export class ResultsService {
 
     const gradeResult = await this.autoGrade.autoGradeAttempt(attemptId, attempt.examId);
 
+    if (dto.adjustedScore !== undefined) {
+      const exam = await this.prisma.exam.findUnique({
+        where: { id: attempt.examId },
+        select: { passScore: true },
+      });
+      const passScore = Number(exam?.passScore ?? 0);
+      const adjusted = dto.adjustedScore;
+      await this.prisma.scoreRecord.update({
+        where: { attemptId },
+        data: {
+          totalScore: adjusted,
+          result: adjusted >= passScore ? 'PASS' : 'FAIL',
+        },
+      });
+    }
+
+    const updatedScore = await this.prisma.scoreRecord.findUnique({ where: { attemptId } });
+
     await this.auditService.log({
       actorId: user.userId,
       actorRole: user.roles.join(','),
@@ -323,7 +341,11 @@ export class ResultsService {
       objectType: 'ExamAttempt',
       objectId: attemptId,
       reason: dto.reason,
-      afterData: gradeResult,
+      afterData: {
+        ...gradeResult,
+        adjustedScore: dto.adjustedScore,
+        finalTotalScore: updatedScore ? Number(updatedScore.totalScore) : undefined,
+      },
     });
     return { regraded: true, ...gradeResult, attemptId };
   }
@@ -409,23 +431,48 @@ export class ResultsService {
     return data;
   }
 
-  /** @deprecated */
   async getExamStats(examId: string) {
-    const scores = await this.prisma.scoreRecord.findMany({
-      where: { attempt: { examId } },
-    });
-    const total = scores.length;
-    const passed = scores.filter((s) => s.result === 'PASS').length;
-    const numericScores = scores.map((s) => Number(s.totalScore));
+    const exam = await this.prisma.exam.findUnique({ where: { id: examId } });
+    if (!exam) throw new NotFoundException('Exam not found');
+
+    const [totalParticipants, completedCount, scores] = await Promise.all([
+      this.prisma.examParticipant.count({ where: { examId } }),
+      this.prisma.examAttempt.count({
+        where: {
+          examId,
+          status: { in: this.submittedStatuses },
+          submittedAt: { not: null },
+        },
+      }),
+      this.prisma.scoreRecord.findMany({
+        where: { attempt: { examId } },
+        select: { totalScore: true, result: true },
+      }),
+    ]);
+
+    const graded = scores.filter((s) => s.result === 'PASS' || s.result === 'FAIL');
+    const passed = graded.filter((s) => s.result === 'PASS').length;
+    const failed = graded.filter((s) => s.result === 'FAIL').length;
+    const numericScores = graded.map((s) => Number(s.totalScore));
+    const gradedTotal = graded.length;
+
     return {
-      participants: total,
+      totalParticipants,
+      completedCount,
+      passRate: gradedTotal ? Math.round((passed / gradedTotal) * 100) : 0,
+      failRate: gradedTotal ? Math.round((failed / gradedTotal) * 100) : 0,
+      avgScore: gradedTotal
+        ? Math.round((numericScores.reduce((a, b) => a + b, 0) / gradedTotal) * 10) / 10
+        : 0,
+      highestScore: numericScores.length ? Math.max(...numericScores) : 0,
+      lowestScore: numericScores.length ? Math.min(...numericScores) : 0,
+      participants: gradedTotal,
       passed,
-      failed: scores.filter((s) => s.result === 'FAIL').length,
+      failed,
       pending: scores.filter((s) => s.result === 'PENDING').length,
-      passRate: total ? (passed / total) * 100 : 0,
-      averageScore: total ? numericScores.reduce((a, b) => a + b, 0) / total : 0,
-      highestScore: total ? Math.max(...numericScores) : 0,
-      lowestScore: total ? Math.min(...numericScores) : 0,
+      averageScore: gradedTotal
+        ? numericScores.reduce((a, b) => a + b, 0) / gradedTotal
+        : 0,
     };
   }
 

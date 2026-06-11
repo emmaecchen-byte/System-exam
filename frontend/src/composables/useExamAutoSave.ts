@@ -5,6 +5,17 @@ import {
   type AnswerPayload,
   type AttemptDetail,
 } from '@/api/candidate';
+
+export interface ExamAutoSaveApi {
+  autoSaveAttempt: (
+    attemptId: string,
+    data: { answers: AnswerPayload[]; currentQuestionIndex?: number },
+  ) => Promise<unknown>;
+  saveAttemptAnswers: (
+    attemptId: string,
+    data: { answers: AnswerPayload[]; currentQuestionIndex?: number },
+  ) => Promise<unknown>;
+}
 import { buildSavePayload } from '@/utils/examAnswers';
 import { clearExamDraft, loadExamDraft, saveExamDraft, type ExamDraft } from '@/utils/examDraftStorage';
 
@@ -22,9 +33,13 @@ interface UseExamAutoSaveOptions {
   visited: Ref<Set<number>>;
   currentIndex: Ref<number>;
   disabled: Ref<boolean>;
+  api?: ExamAutoSaveApi;
 }
 
+const defaultApi: ExamAutoSaveApi = { autoSaveAttempt, saveAttemptAnswers };
+
 export function useExamAutoSave(options: UseExamAutoSaveOptions) {
+  const api = options.api ?? defaultApi;
   const saveStatus = ref<SaveStatus>('idle');
   const isOnline = ref(navigator.onLine);
   const answersChanged = ref(false);
@@ -115,9 +130,9 @@ export function useExamAutoSave(options: UseExamAutoSaveOptions) {
     try {
       const payload = buildPayload();
       if (isAuto) {
-        await autoSaveAttempt(options.attemptId, payload);
+        await api.autoSaveAttempt(options.attemptId, payload);
       } else {
-        await saveAttemptAnswers(options.attemptId, payload);
+        await api.saveAttemptAnswers(options.attemptId, payload);
       }
       markSynced();
       await persistLocal();

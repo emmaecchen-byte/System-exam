@@ -1,10 +1,16 @@
 import { computed, onUnmounted, ref } from 'vue';
-import { fetchAttempt } from '@/api/candidate';
+import { fetchAttempt, type AttemptDetail } from '@/api/candidate';
 
 const SYNC_INTERVAL_MS = 60_000;
 const TICK_INTERVAL_MS = 1_000;
 
-export function useExamTimer(attemptId: string, onTimeout: () => void) {
+type FetchAttemptFn = (attemptId: string) => Promise<{ data: AttemptDetail }>;
+
+export function useExamTimer(
+  attemptId: string,
+  onTimeout: () => void,
+  fetchFn: FetchAttemptFn = fetchAttempt,
+) {
   const remainingSeconds = ref(0);
   let tickId: ReturnType<typeof setInterval> | undefined;
   let syncId: ReturnType<typeof setInterval> | undefined;
@@ -28,7 +34,7 @@ export function useExamTimer(attemptId: string, onTimeout: () => void) {
 
   async function syncWithServer() {
     try {
-      const { data } = await fetchAttempt(attemptId);
+      const { data } = await fetchFn(attemptId);
       remainingSeconds.value = Math.max(0, data.remainingSeconds);
       if (remainingSeconds.value <= 0) triggerTimeout();
     } catch {

@@ -251,7 +251,7 @@ async function promptRegrade(targets: ResultRow[]) {
       },
     );
     for (const row of targets) {
-      await regradeAttempt(row.attemptId, reason.trim());
+      await regradeAttempt(row.attemptId, { reason: reason.trim() });
     }
     ElMessage.success(t('results.regraded', { count: targets.length }));
     selected.value = [];

@@ -1,13 +1,20 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ContentStatus, ExamStatus, Prisma } from '@prisma/client';
+import { toPrismaExamStatus, ExamStatus as ExamStatusConst } from '../../common/constants/exam-status.constants';
 import { PrismaService } from '../../prisma/prisma.module';
 import { AuditService } from '../../common/services/audit.service';
 import { CreateExamDto, QueryExamDto, UpdateExamDto } from './dto/exam.dto';
 import { ExamLifecycleService } from './exam-lifecycle.service';
+import {
+  isSubjectiveQuestionType,
+  resolveSessionTimeWindow,
+  resolveStatusAfterClose,
+} from './exam-lifecycle.util';
 import { SessionsService } from './sessions.service';
 
 const examInclude = {
@@ -20,12 +27,116 @@ const examInclude = {
 
 @Injectable()
 export class ExamsService {
+  private readonly logger = new Logger(ExamsService.name);
+
   constructor(
     private prisma: PrismaService,
     private auditService: AuditService,
     private sessionsService: SessionsService,
     private lifecycleService: ExamLifecycleService,
   ) {}
+
+  /**
+   * Advances exam statuses based on scheduled start/end times.
+   * PUBLISHED → IN_PROGRESS when start_time <= now
+   * IN_PROGRESS → PENDING_GRADING | COMPLETED when end_time <= now
+   */
+  async updateExamStatuses(): Promise<{ started: number; closed: number }> {
+    const now = new Date();
+    let started = 0;
+    let closed = 0;
+
+    const publishedStatus = toPrismaExamStatus(ExamStatusConst.PUBLISHED);
+    const inProgressStatus = toPrismaExamStatus(ExamStatusConst.IN_PROGRESS);
+
+    const publishedExams = await this.prisma.exam.findMany({
+      where: { status: publishedStatus },
+      include: {
+        sessions: { select: { id: true, startTime: true, endTime: true, status: true } },
+      },
+    });
+
+    for (const exam of publishedExams) {
+      const window = resolveSessionTimeWindow(
+        exam.sessions,
+        exam.startTime,
+        exam.endTime,
+      );
+      if (!window.startTime || now < window.startTime) continue;
+
+      await this.prisma.exam.update({
+        where: { id: exam.id },
+        data: { status: inProgressStatus },
+      });
+
+      const activeSessionIds = exam.sessions
+        .filter(
+          (s) =>
+            now >= s.startTime &&
+            now <= s.endTime &&
+            s.status === 'PUBLISHED',
+        )
+        .map((s) => s.id);
+
+      if (activeSessionIds.length) {
+        await this.prisma.examSession.updateMany({
+          where: { id: { in: activeSessionIds } },
+          data: { status: 'IN_PROGRESS' },
+        });
+      }
+
+      started += 1;
+    }
+
+    const inProgressExams = await this.prisma.exam.findMany({
+      where: { status: inProgressStatus },
+      include: {
+        sessions: { select: { startTime: true, endTime: true } },
+        paper: {
+          include: {
+            paperQuestions: {
+              include: { question: { select: { type: true } } },
+            },
+          },
+        },
+      },
+    });
+
+    for (const exam of inProgressExams) {
+      const window = resolveSessionTimeWindow(
+        exam.sessions,
+        exam.startTime,
+        exam.endTime,
+      );
+      if (!window.endTime || now < window.endTime) continue;
+
+      const hasSubjective = exam.paper.paperQuestions.some((pq) =>
+        isSubjectiveQuestionType(pq.question.type),
+      );
+      const nextStatus = resolveStatusAfterClose(hasSubjective);
+
+      await this.prisma.exam.update({
+        where: { id: exam.id },
+        data: {
+          status: nextStatus,
+          closedAt: now,
+        },
+      });
+
+      await this.prisma.examSession.updateMany({
+        where: { examId: exam.id, status: { in: ['PUBLISHED', 'IN_PROGRESS'] } },
+        data: { status: 'CLOSED' },
+      });
+
+      closed += 1;
+    }
+
+    if (started > 0 || closed > 0) {
+      this.logger.log(`Updated exam statuses: ${started} started, ${closed} closed`);
+    }
+
+    return { started, closed };
+  }
 
   async findAll(query: QueryExamDto) {
     const page = query.page ?? 1;
@@ -312,7 +423,7 @@ export class ExamsService {
     return this.toResponse(archived);
   }
 
-  async publishResults(examId: string, actorId: string) {
+  async publishResults(examId: string, actorId: string, reason?: string) {
     const exam = await this.getExamOrThrow(examId);
     if (exam.resultsPublishedAt) {
       throw new BadRequestException('Results are already published for this exam');
@@ -347,7 +458,7 @@ export class ExamsService {
             attemptId: { in: attemptIds },
             result: { in: ['PASS', 'FAIL'] },
           },
-          data: { publishedAt: now },
+          data: { publishedAt: now, publishedById: actorId },
         });
       }
     });
@@ -358,13 +469,13 @@ export class ExamsService {
       objectType: 'Exam',
       objectId: examId,
       objectName: exam.title,
-      reason: 'Exam results published to candidates',
+      reason: reason ?? 'Exam results published to candidates',
     });
 
     return { success: true, publishedAt: now.toISOString() };
   }
 
-  async unpublishResults(examId: string, actorId: string) {
+  async unpublishResults(examId: string, actorId: string, reason?: string) {
     const exam = await this.getExamOrThrow(examId);
     if (!exam.resultsPublishedAt) {
       throw new BadRequestException('Results are not published for this exam');
@@ -394,7 +505,7 @@ export class ExamsService {
       if (attemptIds.length) {
         await tx.scoreRecord.updateMany({
           where: { attemptId: { in: attemptIds } },
-          data: { publishedAt: null },
+          data: { publishedAt: null, publishedById: null },
         });
       }
     });
@@ -405,7 +516,7 @@ export class ExamsService {
       objectType: 'Exam',
       objectId: examId,
       objectName: exam.title,
-      reason: 'Exam results unpublished — hidden from candidates',
+      reason: reason ?? 'Exam results unpublished — hidden from candidates',
     });
 
     return { success: true };

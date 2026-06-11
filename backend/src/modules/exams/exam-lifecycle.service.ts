@@ -1,7 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { ModuleRef } from '@nestjs/core';
 import { ExamStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.module';
+import { ExamsService } from './exams.service';
 import { SessionsService } from './sessions.service';
 import {
   examHasEnded,
@@ -17,6 +18,7 @@ export class ExamLifecycleService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     private sessionsService: SessionsService,
+    private moduleRef: ModuleRef,
   ) {}
 
   async onModuleInit() {
@@ -24,57 +26,10 @@ export class ExamLifecycleService implements OnModuleInit {
     await this.syncAllExamStatuses();
   }
 
-  /** Runs every minute to advance exam statuses based on scheduled times. */
-  @Cron(CronExpression.EVERY_MINUTE)
-  async handleScheduledStatusSync() {
-    await this.sessionsService.invalidateExpiredQrTokens();
-    await this.syncAllExamStatuses();
-  }
-
   async syncAllExamStatuses(): Promise<{ started: number; closed: number }> {
-    const now = new Date();
-    let started = 0;
-    let closed = 0;
-
-    const publishedExams = await this.prisma.exam.findMany({
-      where: { status: ExamStatus.PUBLISHED },
-      include: { sessions: { select: { id: true, startTime: true, endTime: true, status: true } } },
-    });
-
-    for (const exam of publishedExams) {
-      const window = resolveSessionTimeWindow(
-        exam.sessions,
-        exam.startTime,
-        exam.endTime,
-      );
-      if (examHasStarted(now, window)) {
-        await this.transitionToInProgress(exam.id, exam.sessions, now);
-        started += 1;
-      }
-    }
-
-    const inProgressExams = await this.prisma.exam.findMany({
-      where: { status: ExamStatus.IN_PROGRESS },
-      include: { sessions: { select: { id: true, startTime: true, endTime: true, status: true } } },
-    });
-
-    for (const exam of inProgressExams) {
-      const window = resolveSessionTimeWindow(
-        exam.sessions,
-        exam.startTime,
-        exam.endTime,
-      );
-      if (examHasEnded(now, window)) {
-        await this.transitionToClosed(exam.id);
-        closed += 1;
-      }
-    }
-
-    if (started > 0 || closed > 0) {
-      this.logger.log(`Lifecycle sync: ${started} started, ${closed} closed`);
-    }
-
-    return { started, closed };
+    await this.sessionsService.invalidateExpiredQrTokens();
+    const examsService = this.moduleRef.get(ExamsService, { strict: false });
+    return examsService.updateExamStatuses();
   }
 
   async syncExamStatus(examId: string): Promise<void> {

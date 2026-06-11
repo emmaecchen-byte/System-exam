@@ -1,3 +1,11 @@
+export {
+  ExamStatus,
+  fromPrismaExamStatus,
+  isExamStatus,
+  toPrismaExamStatus,
+  type ExamStatusValue,
+} from './exam-status.constants';
+
 export const ROLES = {
   SUPER_ADMIN: 'SUPER_ADMIN',
   ADMIN: 'ADMIN',

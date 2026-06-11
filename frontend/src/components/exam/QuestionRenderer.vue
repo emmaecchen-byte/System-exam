@@ -155,7 +155,7 @@ function toggleMulti(key: string) {
       v-else-if="question.type === 'SHORT_ANSWER'"
       v-model="textValue"
       class="mobile-textarea"
-      rows="6"
+      rows="4"
       inputmode="text"
       enterkeyhint="done"
       autocomplete="off"

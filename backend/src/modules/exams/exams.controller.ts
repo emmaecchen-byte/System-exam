@@ -18,6 +18,7 @@ import { PERMISSIONS } from '../../common/constants';
 import { ExamsService } from './exams.service';
 import { SessionsService } from './sessions.service';
 import { CreateExamDto, QueryExamDto, UpdateExamDto } from './dto/exam.dto';
+import { PublishResultsDto } from './dto/publish-results.dto';
 import { GenerateQrDto } from './dto/qr.dto';
 import {
   AddParticipantsDto,
@@ -97,16 +98,24 @@ export class ExamsController {
     return this.examsService.archive(id, user.userId);
   }
 
-  @Post(':id/publish-results')
+  @Post(':examId/publish-results')
   @RequirePermissions(PERMISSIONS.RESULT_EXPORT)
-  publishResults(@Param('id') id: string, @CurrentUser() user: RequestUser) {
-    return this.examsService.publishResults(id, user.userId);
+  publishResults(
+    @Param('examId') examId: string,
+    @Body() dto: PublishResultsDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.examsService.publishResults(examId, user.userId, dto.reason);
   }
 
-  @Post(':id/unpublish-results')
+  @Post(':examId/unpublish-results')
   @RequirePermissions(PERMISSIONS.RESULT_EXPORT)
-  unpublishResults(@Param('id') id: string, @CurrentUser() user: RequestUser) {
-    return this.examsService.unpublishResults(id, user.userId);
+  unpublishResults(
+    @Param('examId') examId: string,
+    @Body() dto: PublishResultsDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.examsService.unpublishResults(examId, user.userId, dto.reason);
   }
 }
 

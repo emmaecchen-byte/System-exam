@@ -49,6 +49,6 @@ export class AuditLogsQueryDto {
 
 export class AuditExportQueryDto extends AuditLogsQueryDto {
   @IsOptional()
-  @IsIn(['xlsx', 'json'])
-  format?: 'xlsx' | 'json';
+  @IsIn(['xlsx', 'json', 'csv'])
+  format?: 'xlsx' | 'json' | 'csv';
 }

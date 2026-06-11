@@ -343,7 +343,8 @@ export class StudentService {
     return (
       this.isGradingFinalized(attempt, attempt.scoreRecord) &&
       examResultsPublishedAt != null &&
-      attempt.resultsPublishedAt != null
+      attempt.resultsPublishedAt != null &&
+      attempt.scoreRecord?.publishedAt != null
     );
   }
 
@@ -425,7 +426,13 @@ export class StudentService {
     });
     if (!exam) throw new NotFoundException('Exam not found');
     if (exam.status !== 'IN_PROGRESS') {
-      throw new BadRequestException('Exam is not in progress');
+      if (exam.status === 'PUBLISHED') {
+        throw new BadRequestException('Exam has not started yet');
+      }
+      if (exam.status === 'PENDING_GRADING' || exam.status === 'COMPLETED') {
+        throw new BadRequestException('Exam has ended');
+      }
+      throw new BadRequestException('Exam is not available for taking');
     }
 
     const window = await this.getParticipantWindow(examId, userId);
@@ -434,6 +441,12 @@ export class StudentService {
     const now = new Date();
     if (!startTime || !endTime) {
       throw new BadRequestException('Exam time window is not configured');
+    }
+    if (now < startTime) {
+      throw new BadRequestException('Exam has not started yet');
+    }
+    if (now > endTime) {
+      throw new BadRequestException('Exam has ended');
     }
     if (!isWithinExamWindow(now, { startTime, endTime })) {
       throw new BadRequestException('Outside exam time window');
@@ -665,11 +678,19 @@ export class StudentService {
     const attempt = await this.getOwnedAttempt(attemptId, userId);
     if (attempt.status !== 'IN_PROGRESS') return { logged: false };
 
-    const action = dto.eventType === 'PAGE_LEAVE' ? 'PAGE_LEAVE' : 'SCREEN_SWITCH';
+    const action = this.mapCandidateAuditAction(dto.eventType);
     const exam = await this.prisma.exam.findUnique({
       where: { id: attempt.examId },
       select: { title: true },
     });
+
+    const afterData: Record<string, unknown> = {
+      eventType: dto.eventType,
+      ...(dto.metadata ?? {}),
+      ...(dto.timestamp ? { timestamp: dto.timestamp } : {}),
+      ...(dto.action ? { action: dto.action } : {}),
+      ...(dto.duration_seconds !== undefined ? { duration_seconds: dto.duration_seconds } : {}),
+    };
 
     await this.auditService.log({
       actorId: userId,
@@ -678,10 +699,17 @@ export class StudentService {
       objectType: 'ExamAttempt',
       objectId: attemptId,
       objectName: exam?.title,
+      afterData,
       ...ctx,
     });
 
     return { logged: true };
+  }
+
+  private mapCandidateAuditAction(eventType: string): 'PAGE_LEAVE' | 'SCREEN_SWITCH' {
+    const normalized = eventType.toUpperCase().replace(/-/g, '_');
+    if (normalized === 'PAGE_LEAVE') return 'PAGE_LEAVE';
+    return 'SCREEN_SWITCH';
   }
 
   private computeRemainingSeconds(startedAt: Date, durationMinutes: number): number {
@@ -833,23 +861,7 @@ export class StudentService {
       };
     }
 
-    if (!exam?.resultsPublishedAt) {
-      return {
-        attemptId,
-        examTitle: exam?.title,
-        status: 'pending',
-        graded: false,
-        submittedAt: attempt.submittedAt,
-        message: 'Results not yet published',
-      };
-    }
-
-    if (
-      !this.isResultPublishedForCandidate(
-        { status: attempt.status, resultsPublishedAt: attempt.resultsPublishedAt, scoreRecord: score },
-        exam.resultsPublishedAt,
-      )
-    ) {
+    if (!score.publishedAt || !exam?.resultsPublishedAt) {
       return {
         attemptId,
         examTitle: exam?.title,
@@ -867,7 +879,7 @@ export class StudentService {
     const scoreMap = new Map(
       (exam?.paper.paperQuestions ?? []).map((pq) => [pq.questionId, Number(pq.score)]),
     );
-    const showAnswerDetails = true;
+    const showStandardAnswers = Boolean(exam?.showAnswersToCandidate);
 
     const questions = answerRecords.map((record, index) => {
       const snapshot = record.questionSnapshotJson as unknown as ResultQuestionSnapshot;
@@ -889,12 +901,12 @@ export class StudentService {
           ? resolveOptionLabel(snapshot, rawCandidate)
           : rawCandidate;
       const correctAnswer =
-        showAnswerDetails &&
+        showStandardAnswers &&
         (snapshot.type === 'SINGLE_CHOICE' ||
           snapshot.type === 'TRUE_FALSE' ||
           snapshot.type === 'MULTIPLE_CHOICE')
           ? resolveOptionLabel(snapshot, rawCorrect)
-          : showAnswerDetails
+          : showStandardAnswers
             ? rawCorrect
             : null;
 
@@ -923,7 +935,7 @@ export class StudentService {
       totalScore: Number(score!.totalScore),
       passScore: Number(score!.passScore),
       result: score!.result,
-      showAnswers: showAnswerDetails,
+      showAnswers: showStandardAnswers,
       questions,
     };
   }

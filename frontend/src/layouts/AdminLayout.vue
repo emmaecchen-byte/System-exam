@@ -22,13 +22,17 @@ interface MenuItem {
 
 const allMenus: MenuItem[] = [
   { path: '/admin/dashboard', labelKey: 'nav.dashboard', roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
+  { path: '/admin/users', labelKey: 'nav.users', permission: 'user:manage' },
+  { path: '/admin/departments', labelKey: 'nav.departments', permission: 'user:manage' },
+  { path: '/admin/roles', labelKey: 'nav.roles', permission: 'role:manage' },
   { path: '/questions', labelKey: 'nav.questionBank', roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
   { path: '/papers', labelKey: 'nav.papers', roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
   { path: '/exams', labelKey: 'nav.exams', roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
+  { path: '/admin/reports', labelKey: 'nav.reports', permission: 'result:view' },
   { path: '/admin/results', labelKey: 'nav.resultsReports', permission: 'result:view' },
   { path: '/admin/categories', labelKey: 'nav.categories', roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
   { path: '/settings', labelKey: 'nav.settings', roles: [ROLES.SUPER_ADMIN] },
-  { path: '/audit-logs', labelKey: 'nav.auditLogs', permission: 'audit:view' },
+  { path: '/admin/audit-logs', labelKey: 'nav.auditLogs', roles: [ROLES.SUPER_ADMIN] },
 ];
 
 const visibleMenus = computed(() =>
