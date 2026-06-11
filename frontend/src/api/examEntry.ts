@@ -4,6 +4,7 @@ export type ExamEntryStatus =
   | 'ok'
   | 'invalid'
   | 'expired'
+  | 'invalidated'
   | 'login_required'
   | 'unauthorized'
   | 'completed'

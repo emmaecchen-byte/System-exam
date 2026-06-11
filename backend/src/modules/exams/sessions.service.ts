@@ -5,6 +5,7 @@ import * as QRCode from 'qrcode';
 import { PrismaService } from '../../prisma/prisma.module';
 import { AuditService } from '../../common/services/audit.service';
 import { QrTokenService } from '../../common/services/qr-token.service';
+import { resolveQrCodeStatus } from './qr-status.util';
 import { GenerateQrDto } from './dto/qr.dto';
 import {
   AddParticipantsDto,
@@ -246,6 +247,9 @@ export class SessionsService {
         qrTokenEnc: enc,
         qrExpiresAt: expiresAt,
         qrCreatedAt: createdAt,
+        qrIsValid: true,
+        qrInvalidatedAt: null,
+        qrInvalidatedById: null,
         qrMaxScans: dto.maxScans ?? null,
         qrScanCount: 0,
         qrCandidateId: dto.candidateId ?? null,
@@ -266,7 +270,20 @@ export class SessionsService {
       reason: 'QR code generated',
     });
 
-    return this.buildQrResponse(sessionId, token, expiresAt, createdAt, dto.maxScans);
+    return this.buildQrResponse(
+      sessionId,
+      token,
+      expiresAt,
+      createdAt,
+      {
+        ...session,
+        qrTokenHash: hash,
+        qrExpiresAt: expiresAt,
+        qrIsValid: true,
+        qrInvalidatedAt: null,
+      },
+      dto.maxScans,
+    );
   }
 
   async getQrCode(sessionId: string) {
@@ -279,6 +296,7 @@ export class SessionsService {
       token,
       session.qrExpiresAt!,
       session.qrCreatedAt ?? undefined,
+      session,
       session.qrMaxScans ?? undefined,
       false,
     );
@@ -293,31 +311,59 @@ export class SessionsService {
   }
 
   async revokeQrToken(sessionId: string, actorId?: string) {
-    await this.getSessionOrThrow(sessionId);
-    await this.clearQrFields(sessionId);
+    const session = await this.getSessionOrThrow(sessionId);
+    if (!session.qrTokenHash) {
+      throw new NotFoundException('No QR code generated for this session.');
+    }
+    if (!session.qrIsValid) {
+      throw new BadRequestException('QR code is already invalidated.');
+    }
+
+    const now = new Date();
+    await this.prisma.examSession.update({
+      where: { id: sessionId },
+      data: {
+        qrIsValid: false,
+        qrInvalidatedAt: now,
+        qrInvalidatedById: actorId ?? null,
+      },
+    });
+
     await this.auditService.log({
       actorId,
       action: 'DELETE',
       objectType: 'ExamSession',
       objectId: sessionId,
-      reason: 'QR token revoked',
+      reason: 'QR token manually invalidated',
     });
-    return { sessionId, revoked: true };
+    return { sessionId, invalidated: true, invalidatedAt: now.toISOString() };
   }
 
   async revokeQrTokensForExam(examId: string) {
+    const now = new Date();
     await this.prisma.examSession.updateMany({
-      where: { examId, qrTokenHash: { not: null } },
+      where: { examId, qrTokenHash: { not: null }, qrIsValid: true },
       data: {
-        qrTokenHash: null,
-        qrTokenEnc: null,
-        qrExpiresAt: null,
-        qrCreatedAt: null,
-        qrMaxScans: null,
-        qrScanCount: 0,
-        qrCandidateId: null,
+        qrIsValid: false,
+        qrInvalidatedAt: now,
       },
     });
+  }
+
+  /** Marks QR tokens expired when session end time or configured expiry has passed. */
+  async invalidateExpiredQrTokens(): Promise<number> {
+    const now = new Date();
+    const result = await this.prisma.examSession.updateMany({
+      where: {
+        qrTokenHash: { not: null },
+        qrIsValid: true,
+        OR: [{ endTime: { lt: now } }, { qrExpiresAt: { lt: now } }],
+      },
+      data: {
+        qrIsValid: false,
+      },
+    });
+    return result.count;
   }
 
   private resolveQrExpiry(
@@ -337,8 +383,8 @@ export class SessionsService {
       expiry = session.endTime;
     }
 
-    // Keep QR valid through the exam window (until session ends) when session is still open
-    if (session.endTime > expiry) {
+    // QR never remains valid after the session ends
+    if (expiry > session.endTime) {
       expiry = session.endTime;
     }
 
@@ -364,12 +410,21 @@ export class SessionsService {
     sessionId: string,
     token: string,
     expiresAt: Date,
-    createdAt?: Date,
+    createdAt: Date | undefined,
+    session: {
+      qrTokenHash: string | null;
+      qrIsValid: boolean;
+      qrExpiresAt: Date | null;
+      qrInvalidatedAt: Date | null;
+      endTime: Date;
+      status: string;
+    },
     maxScans?: number | null,
     includeToken = true,
   ) {
     const entryUrl = this.buildEntryUrl(token);
     const qrDataUrl = await QRCode.toDataURL(entryUrl, { width: 280, margin: 2 });
+    const qrStatus = resolveQrCodeStatus(session);
     return {
       entryUrl,
       entryPath: `/api/public/exam-entry?token=${encodeURIComponent(token)}`,
@@ -377,6 +432,7 @@ export class SessionsService {
       expiresAt,
       createdAt: createdAt ?? null,
       maxScans: maxScans ?? null,
+      qrStatus,
       qrDataUrl,
       qrPngDataUrl: qrDataUrl,
       qrImageUrl: `/api/admin/sessions/${sessionId}/qr-code/image`,
@@ -387,16 +443,21 @@ export class SessionsService {
     qrTokenHash: string | null;
     qrTokenEnc: string | null;
     qrExpiresAt: Date | null;
+    qrIsValid: boolean;
+    qrInvalidatedAt: Date | null;
+    endTime: Date;
     status: string;
   }) {
     if (!session.qrTokenHash || !session.qrTokenEnc || !session.qrExpiresAt) {
       throw new NotFoundException('No QR code generated for this session. Generate one first.');
     }
-    if (session.status === 'CLOSED' || session.status === 'ARCHIVED') {
-      throw new BadRequestException('QR code is no longer valid — session is closed.');
+
+    const status = resolveQrCodeStatus(session);
+    if (status === 'invalidated') {
+      throw new BadRequestException('This QR code has been invalidated.');
     }
-    if (session.qrExpiresAt < new Date()) {
-      throw new BadRequestException('QR code has expired. Regenerate a new one.');
+    if (status === 'expired') {
+      throw new BadRequestException('This QR code has expired.');
     }
   }
 
@@ -409,21 +470,6 @@ export class SessionsService {
     } catch {
       throw new BadRequestException('Stored QR token is invalid. Regenerate the QR code.');
     }
-  }
-
-  private async clearQrFields(sessionId: string) {
-    await this.prisma.examSession.update({
-      where: { id: sessionId },
-      data: {
-        qrTokenHash: null,
-        qrTokenEnc: null,
-        qrExpiresAt: null,
-        qrCreatedAt: null,
-        qrMaxScans: null,
-        qrScanCount: 0,
-        qrCandidateId: null,
-      },
-    });
   }
 
   private async resolveTargetUsers(dto: AddParticipantsDto): Promise<string[]> {
@@ -506,10 +552,14 @@ export class SessionsService {
       exam: session.exam,
       qrExpiresAt: session.qrExpiresAt,
       qrCreatedAt: session.qrCreatedAt,
+      qrIsValid: session.qrIsValid,
+      qrInvalidatedAt: session.qrInvalidatedAt,
+      qrInvalidatedById: session.qrInvalidatedById,
       qrMaxScans: session.qrMaxScans,
       qrScanCount: session.qrScanCount,
       qrCandidateId: session.qrCandidateId,
       hasQrToken: Boolean(session.qrTokenHash),
+      qrStatus: resolveQrCodeStatus(session),
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
     };

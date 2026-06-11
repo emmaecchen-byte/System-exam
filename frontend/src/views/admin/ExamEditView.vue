@@ -19,6 +19,8 @@ import {
   fetchExamSessions,
   fetchSessionParticipants,
   publishExam,
+  publishExamResults,
+  unpublishExamResults,
   searchCandidates,
   updateExam,
   updateSession,
@@ -27,6 +29,8 @@ import { fetchPublishedPapers } from '@/api/papers';
 import { useExamListBasePath } from '@/composables/useExamListBasePath';
 import { useLocalizedLabels } from '@/composables/useLocalizedLabels';
 import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
+import QrCodeDialog from '@/components/QrCodeDialog.vue';
+import type { QrCodeStatus } from '@/api/exams';
 
 const { t } = useI18n();
 const { examStatus, sessionStatus } = useLocalizedLabels();
@@ -76,6 +80,20 @@ const sessionForm = ref({
 
 const participantDialog = ref(false);
 const activeSessionId = ref('');
+const qrDialogVisible = ref(false);
+const qrSession = ref<{ id: string; name: string; endTime: string } | null>(null);
+
+function qrStatusTag(status?: QrCodeStatus) {
+  if (status === 'active') return 'success';
+  if (status === 'expired') return 'warning';
+  if (status === 'invalidated') return 'danger';
+  return 'info';
+}
+
+function openQrDialog(row: ExamSession) {
+  qrSession.value = { id: row.id, name: row.name, endTime: row.endTime };
+  qrDialogVisible.value = true;
+}
 const targetType = ref<'ALL' | 'DEPARTMENTS' | 'USERS'>('ALL');
 const selectedDepartments = ref<string[]>([]);
 const candidateSearch = ref('');
@@ -316,6 +334,50 @@ async function closeExamEarly() {
   await loadExam();
 }
 
+const canManageResults = computed(
+  () =>
+    exam.value &&
+    ['PENDING_GRADING', 'COMPLETED', 'IN_PROGRESS', 'PUBLISHED'].includes(exam.value.status),
+);
+
+async function publishResults() {
+  if (!examId.value) return;
+  try {
+    await ElMessageBox.confirm(t('examEdit.publishResultsConfirm'), t('examEdit.publishResultsTitle'), {
+      type: 'warning',
+    });
+  } catch {
+    return;
+  }
+  try {
+    await publishExamResults(examId.value);
+    ElMessage.success(t('examEdit.publishResultsSuccess'));
+    await loadExam();
+  } catch (err: unknown) {
+    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+    ElMessage.error(msg ?? t('examEdit.publishResultsFailed'));
+  }
+}
+
+async function unpublishResults() {
+  if (!examId.value) return;
+  try {
+    await ElMessageBox.confirm(t('examEdit.unpublishResultsConfirm'), t('examEdit.unpublishResultsTitle'), {
+      type: 'warning',
+    });
+  } catch {
+    return;
+  }
+  try {
+    await unpublishExamResults(examId.value);
+    ElMessage.success(t('examEdit.unpublishResultsSuccess'));
+    await loadExam();
+  } catch (err: unknown) {
+    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+    ElMessage.error(msg ?? t('examEdit.unpublishResultsFailed'));
+  }
+}
+
 async function deleteExamDraft() {
   if (!examId.value || exam.value?.status !== 'DRAFT') return;
   try {
@@ -367,7 +429,18 @@ watch(
         <h2>{{ isNew ? t('examEdit.newExam') : examTitle(exam?.id, exam?.title) }}</h2>
         <div v-if="exam" class="meta">
           <el-tag>{{ examStatus(exam.status) }}</el-tag>
+          <el-tag v-if="exam.resultsPublished" type="success">{{ t('examEdit.resultsPublishedBadge') }}</el-tag>
+          <el-tag v-else-if="canManageResults" type="warning">{{ t('examEdit.resultsUnpublishedBadge') }}</el-tag>
           <span>{{ t('examEdit.sessionCount', { count: exam.sessionCount }) }}</span>
+          <span v-if="exam.publishedAt" class="lifecycle-ts">
+            {{ t('examEdit.publishedAt', { date: new Date(exam.publishedAt).toLocaleString() }) }}
+          </span>
+          <span v-if="exam.closedAt" class="lifecycle-ts">
+            {{ t('examEdit.closedAt', { date: new Date(exam.closedAt).toLocaleString() }) }}
+          </span>
+          <span v-if="exam.archivedAt" class="lifecycle-ts">
+            {{ t('examEdit.archivedAt', { date: new Date(exam.archivedAt).toLocaleString() }) }}
+          </span>
         </div>
       </div>
       <el-button
@@ -389,6 +462,44 @@ watch(
       :title="t('examEdit.liveTitle')"
       :description="t('examEdit.liveDesc')"
     />
+
+    <el-card
+      v-if="examId && canManageResults"
+      shadow="never"
+      class="results-publish-card"
+    >
+      <div class="results-publish-row">
+        <div>
+          <h3>{{ t('examEdit.resultsPublishingTitle') }}</h3>
+          <p class="hint">{{ t('examEdit.resultsPublishingDesc') }}</p>
+          <p v-if="exam?.resultsPublishedAt" class="hint">
+            {{
+              t('examEdit.resultsPublishedAt', {
+                date: new Date(exam.resultsPublishedAt).toLocaleString(),
+                name: exam.resultsPublishedBy?.name ?? '—',
+              })
+            }}
+          </p>
+        </div>
+        <div class="results-publish-actions">
+          <el-button
+            v-if="!exam?.resultsPublished"
+            type="success"
+            @click="publishResults"
+          >
+            {{ t('examEdit.publishResults') }}
+          </el-button>
+          <el-button
+            v-else
+            type="warning"
+            plain
+            @click="unpublishResults"
+          >
+            {{ t('examEdit.unpublishResults') }}
+          </el-button>
+        </div>
+      </div>
+    </el-card>
 
     <el-tabs v-if="examId || isNew" :key="examId ?? 'new'" v-model="activeTab" @tab-change="onTabChange">
       <el-tab-pane :label="t('examEdit.tabConfig')" name="config">
@@ -434,7 +545,13 @@ watch(
             <el-form-item>
               <el-button type="primary" :loading="saving" @click="saveExam">{{ t('examEdit.saveExam') }}</el-button>
               <el-button v-if="exam?.status === 'DRAFT'" type="success" @click="publish">{{ t('examEdit.publish') }}</el-button>
-              <el-button v-if="exam?.status === 'PUBLISHED'" type="warning" @click="closeExamEarly">{{ t('examEdit.closeEarly') }}</el-button>
+              <el-button
+                v-if="exam?.status === 'PUBLISHED' || exam?.status === 'IN_PROGRESS'"
+                type="warning"
+                @click="closeExamEarly"
+              >
+                {{ t('examEdit.closeEarly') }}
+              </el-button>
             </el-form-item>
           </el-form>
         </el-card>
@@ -465,6 +582,18 @@ watch(
             <el-table-column :label="t('common.status')" width="110">
               <template #default="{ row }">{{ sessionStatus(row.status) }}</template>
             </el-table-column>
+            <el-table-column :label="t('qr.statusLabel')" width="120">
+              <template #default="{ row }">
+                <el-tag
+                  v-if="row.qrStatus && row.qrStatus !== 'none'"
+                  size="small"
+                  :type="qrStatusTag(row.qrStatus)"
+                >
+                  {{ t(`qr.status.${row.qrStatus}`) }}
+                </el-tag>
+                <span v-else class="muted">—</span>
+              </template>
+            </el-table-column>
             <el-table-column :label="t('examEdit.colParticipants')" min-width="160">
               <template #default="{ row }">
                 <el-button link type="primary" @click="openParticipants(row.id)">
@@ -472,8 +601,16 @@ watch(
                 </el-button>
               </template>
             </el-table-column>
-            <el-table-column :label="t('common.actions')" width="140">
+            <el-table-column :label="t('common.actions')" width="200">
               <template #default="{ row }">
+                <el-button
+                  v-if="exam && exam.status !== 'DRAFT' && exam.status !== 'ARCHIVED'"
+                  link
+                  type="primary"
+                  @click="openQrDialog(row)"
+                >
+                  {{ t('qr.openQr') }}
+                </el-button>
                 <el-button v-if="exam?.isEditable" link @click="openSessionDialog(row)">{{ t('common.edit') }}</el-button>
                 <el-button v-if="exam?.isEditable" link type="danger" @click="removeSession(row.id)">{{ t('common.delete') }}</el-button>
               </template>
@@ -572,11 +709,19 @@ watch(
       </el-table>
     </el-dialog>
 
+    <QrCodeDialog
+      v-if="qrSession"
+      v-model:visible="qrDialogVisible"
+      :session-id="qrSession.id"
+      :session-name="qrSession.name"
+      :session-end-time="qrSession.endTime"
+    />
   </div>
 </template>
 
 <style scoped>
 .exam-edit { display: flex; flex-direction: column; gap: 16px; }
+.muted { color: #9ca3af; font-size: 13px; }
 .published-banner { margin-bottom: 4px; }
 .participant-hint { margin-bottom: 16px; }
 .page-header {
@@ -589,4 +734,14 @@ watch(
 .meta { display: flex; gap: 12px; align-items: center; color: #6b7280; font-size: 14px; }
 .hint { margin: 4px 0 0; font-size: 12px; color: #6b7280; }
 .session-header { display: flex; justify-content: space-between; margin-bottom: 12px; }
+.results-publish-card { border-radius: 12px; }
+.results-publish-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.results-publish-row h3 { margin: 0 0 8px; font-size: 1rem; }
+.results-publish-actions { display: flex; gap: 8px; flex-shrink: 0; }
 </style>

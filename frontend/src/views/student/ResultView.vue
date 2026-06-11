@@ -81,8 +81,16 @@ function questionTypeLabel(type: string) {
       <template v-if="!result.graded">
         <el-result
           icon="info"
-          :title="t('student.resultsNotAvailable')"
-          :sub-title="result.message"
+          :title="
+            result.status === 'pending'
+              ? t('student.resultsPendingPublish')
+              : t('student.resultsNotAvailable')
+          "
+          :sub-title="
+            result.status === 'pending'
+              ? t('student.resultsPendingPublishDesc')
+              : result.message
+          "
         >
           <template v-if="result.submittedAt" #extra>
             <p class="submitted">

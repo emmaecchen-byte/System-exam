@@ -21,9 +21,9 @@ export class QrTokenService {
     this.key = createHash('sha256').update(secret).digest();
   }
 
-  /** Cryptographically secure opaque token (32 random bytes, base64url). */
+  /** Cryptographically secure opaque token (32 random bytes, hex-encoded). */
   generateOpaqueToken(): string {
-    return randomBytes(32).toString('base64url');
+    return randomBytes(32).toString('hex');
   }
 
   hashToken(token: string): string {

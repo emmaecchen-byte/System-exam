@@ -22,6 +22,7 @@ const statusType = computed(() => {
   const s = info.value?.status;
   if (
     s === 'expired'
+    || s === 'invalidated'
     || s === 'invalid'
     || s === 'unauthorized'
     || s === 'completed'

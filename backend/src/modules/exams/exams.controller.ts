@@ -96,6 +96,18 @@ export class ExamsController {
   archive(@Param('id') id: string, @CurrentUser() user: RequestUser) {
     return this.examsService.archive(id, user.userId);
   }
+
+  @Post(':id/publish-results')
+  @RequirePermissions(PERMISSIONS.RESULT_EXPORT)
+  publishResults(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.examsService.publishResults(id, user.userId);
+  }
+
+  @Post(':id/unpublish-results')
+  @RequirePermissions(PERMISSIONS.RESULT_EXPORT)
+  unpublishResults(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.examsService.unpublishResults(id, user.userId);
+  }
 }
 
 @ApiTags('Admin - Sessions')

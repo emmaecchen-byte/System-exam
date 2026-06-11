@@ -6,6 +6,7 @@ export type ExamEntryStatus =
   | 'ok'
   | 'invalid'
   | 'expired'
+  | 'invalidated'
   | 'login_required'
   | 'unauthorized'
   | 'completed'
@@ -97,24 +98,32 @@ export class QrEntryService {
     if (!session || !session.qrTokenEnc) {
       return {
         status: 'invalid',
-        message: 'This exam link is invalid or has been revoked. Please contact your administrator.',
+        message: 'This QR code is invalid. Please contact your administrator.',
       };
     }
 
-    if (session.status === 'CLOSED' || session.status === 'ARCHIVED') {
+    const now = new Date();
+
+    if (session.qrInvalidatedAt) {
       return {
-        status: 'invalid',
-        message: 'This exam session is closed. The QR code is no longer valid.',
+        status: 'invalidated',
+        message: 'This QR code has been invalidated.',
         examTitle: session.exam.title,
         sessionName: session.name,
       };
     }
 
-    const now = new Date();
-    if (!session.qrExpiresAt || session.qrExpiresAt < now) {
+    if (
+      !session.qrIsValid
+      || !session.qrExpiresAt
+      || session.qrExpiresAt < now
+      || session.endTime < now
+      || session.status === 'CLOSED'
+      || session.status === 'ARCHIVED'
+    ) {
       return {
         status: 'expired',
-        message: 'QR code has expired. Please contact your administrator.',
+        message: 'This QR code has expired.',
         examTitle: session.exam.title,
         sessionName: session.name,
       };

@@ -88,6 +88,7 @@ export function useLocalizedLabels() {
       'In progress': 'labels.candidate.inProgress',
       'Open now': 'labels.candidate.openNow',
       'Pending grading': 'labels.candidate.pendingGrading',
+      'Awaiting result publication': 'labels.candidate.awaitingPublication',
       'Graded & published': 'labels.candidate.gradedPublished',
       Upcoming: 'labels.candidate.upcoming',
       'Session ended': 'labels.candidate.sessionEnded',
@@ -99,6 +100,7 @@ export function useLocalizedLabels() {
       UPCOMING: 'labels.candidate.upcoming',
       IN_PROGRESS: 'labels.candidate.inProgress',
       PENDING_GRADING: 'labels.candidate.pendingGrading',
+      AWAITING_PUBLISH: 'labels.candidate.awaitingPublication',
       GRADED_PUBLISHED: 'labels.candidate.gradedPublished',
       NOT_TAKEN: 'labels.candidate.notTaken',
     };
@@ -111,6 +113,8 @@ export function useLocalizedLabels() {
       'Continue exam': 'student.continueExam',
       'Start exam': 'student.startExam',
       'Awaiting results': 'labels.candidate.awaitingResults',
+      'Results not published yet': 'labels.candidate.resultsNotPublishedYet',
+      'Awaiting result publication': 'labels.candidate.awaitingPublication',
       'View result': 'student.viewResult',
       'Not yet open': 'labels.candidate.notYetOpen',
     };

@@ -9,6 +9,8 @@ import { AuditService } from '../../common/services/audit.service';
 import { RequestAuditContext } from '../../common/utils/request-audit.util';
 import { PrismaService } from '../../prisma/prisma.module';
 import { toCandidateQuestion } from '../questions/questions.service';
+import { ExamLifecycleService } from '../exams/exam-lifecycle.service';
+import { isWithinExamWindow } from '../exams/exam-lifecycle.util';
 import { AutoGradeService } from './auto-grade.service';
 import { BatchSaveAnswersDto, CandidateAuditEventDto, SaveAnswerDto } from './dto/student.dto';
 
@@ -111,14 +113,31 @@ export class StudentService {
     private prisma: PrismaService,
     private autoGrade: AutoGradeService,
     private auditService: AuditService,
+    private lifecycleService: ExamLifecycleService,
   ) {}
 
   async listExams(userId: string) {
+    const participantRows = await this.prisma.examParticipant.findMany({
+      where: { userId },
+      select: { examId: true, exam: { select: { status: true } } },
+    });
+    const syncIds = [
+      ...new Set(
+        participantRows
+          .filter((p) => p.exam.status === 'PUBLISHED' || p.exam.status === 'IN_PROGRESS')
+          .map((p) => p.examId),
+      ),
+    ];
+    await Promise.all(syncIds.map((id) => this.lifecycleService.syncExamStatus(id)));
+
     const participants = await this.prisma.examParticipant.findMany({
       where: { userId },
       include: {
         exam: {
-          include: { category: true, paper: { select: { id: true, title: true, totalScore: true } } },
+          include: {
+            category: true,
+            paper: { select: { id: true, title: true, totalScore: true } },
+          },
         },
         session: true,
       },
@@ -134,32 +153,16 @@ export class StudentService {
         })
       : [];
 
-    const finalizedWithoutPublish = attempts.filter(
-      (a) =>
-        a.status === 'COMPLETED' &&
-        a.scoreRecord?.result &&
-        a.scoreRecord.result !== 'PENDING' &&
-        !a.scoreRecord.publishedAt,
-    );
-    if (finalizedWithoutPublish.length) {
-      await this.ensureResultsPublished(finalizedWithoutPublish.map((a) => a.id));
-      for (const attempt of finalizedWithoutPublish) {
-        if (attempt.scoreRecord) {
-          attempt.scoreRecord.publishedAt = new Date();
-        }
-      }
-    }
-
     const now = new Date();
-    const visibleExamStatuses = new Set([
-      'PUBLISHED',
-      'IN_PROGRESS',
-      'PENDING_GRADING',
-      'COMPLETED',
-    ]);
+    const activeExamStatuses = new Set(['PUBLISHED', 'IN_PROGRESS']);
+    const examsWithAttempts = new Set(attempts.map((a) => a.examId));
 
     return participants
-      .filter((p) => visibleExamStatuses.has(p.exam.status))
+      .filter(
+        (p) =>
+          activeExamStatuses.has(p.exam.status) ||
+          examsWithAttempts.has(p.examId),
+      )
       .map((p) => {
         const startTime = p.session?.startTime ?? p.exam.startTime;
         const endTime = p.session?.endTime ?? p.exam.endTime;
@@ -171,6 +174,7 @@ export class StudentService {
         const attempt = sessionAttempts[0] ?? null;
         const resolved = this.resolveCandidateExamState(
           attempt,
+          p.exam.resultsPublishedAt,
           startTime,
           endTime,
           now,
@@ -214,6 +218,7 @@ export class StudentService {
   private resolveCandidateExamState(
     attempt: {
       status: string;
+      resultsPublishedAt: Date | null;
       scoreRecord?: {
         result: string | null;
         publishedAt: Date | null;
@@ -221,6 +226,7 @@ export class StudentService {
         passScore: unknown;
       } | null;
     } | null,
+    examResultsPublishedAt: Date | null,
     startTime: Date | null | undefined,
     endTime: Date | null | undefined,
     now: Date,
@@ -231,7 +237,7 @@ export class StudentService {
       (!endTime || now <= new Date(endTime));
     const beforeStart = Boolean(startTime && now < new Date(startTime));
     const afterEnd = Boolean(endTime && now > new Date(endTime));
-    const examTakeable = examStatus === 'PUBLISHED' || examStatus === 'IN_PROGRESS';
+    const examTakeable = examStatus === 'IN_PROGRESS';
 
     if (attempt?.status === 'IN_PROGRESS') {
       return {
@@ -259,7 +265,7 @@ export class StudentService {
     }
 
     if (attempt?.status === 'COMPLETED') {
-      const published = this.isResultPublishedForCandidate(attempt);
+      const published = this.isResultPublishedForCandidate(attempt, examResultsPublishedAt);
       if (published) {
         return {
           candidateState: 'GRADED_PUBLISHED' as const,
@@ -270,21 +276,22 @@ export class StudentService {
           canViewResult: true,
         };
       }
+      const graded = this.isGradingFinalized(attempt, attempt.scoreRecord);
       return {
-        candidateState: 'PENDING_GRADING' as const,
+        candidateState: graded ? ('AWAITING_PUBLISH' as const) : ('PENDING_GRADING' as const),
         tab: 'finished' as const,
-        statusLabel: 'Pending grading',
-        actionLabel: 'Awaiting results',
+        statusLabel: graded ? 'Awaiting result publication' : 'Pending grading',
+        actionLabel: graded ? 'Results not published yet' : 'Awaiting results',
         canEnter: false,
         canViewResult: false,
       };
     }
 
-    if (beforeStart) {
+    if (examStatus === 'PUBLISHED' || beforeStart) {
       return {
         candidateState: 'UPCOMING' as const,
         tab: 'upcoming' as const,
-        statusLabel: 'Upcoming',
+        statusLabel: examStatus === 'PUBLISHED' ? 'Published — not yet open' : 'Upcoming',
         actionLabel: 'Not yet open',
         canEnter: false,
         canViewResult: false,
@@ -322,37 +329,36 @@ export class StudentService {
     );
   }
 
-  private isResultPublishedForCandidate(attempt: {
-    status: string;
-    scoreRecord?: {
-      result: string | null;
-      publishedAt: Date | null;
-    } | null;
-  }): boolean {
-    return this.isGradingFinalized(attempt, attempt.scoreRecord);
+  private isResultPublishedForCandidate(
+    attempt: {
+      status: string;
+      resultsPublishedAt: Date | null;
+      scoreRecord?: {
+        result: string | null;
+        publishedAt: Date | null;
+      } | null;
+    },
+    examResultsPublishedAt: Date | null,
+  ): boolean {
+    return (
+      this.isGradingFinalized(attempt, attempt.scoreRecord) &&
+      examResultsPublishedAt != null &&
+      attempt.resultsPublishedAt != null
+    );
   }
 
-  private isGradedForCandidate(attempt: {
-    status: string;
-    scoreRecord?: {
-      result: string | null;
-      publishedAt: Date | null;
-    } | null;
-  }): boolean {
-    return this.isResultPublishedForCandidate(attempt);
-  }
-
-  /** Backfill publication timestamp for attempts graded before publish logic was added. */
-  private async ensureResultsPublished(attemptIds: string[]) {
-    if (!attemptIds.length) return;
-    await this.prisma.scoreRecord.updateMany({
-      where: {
-        attemptId: { in: attemptIds },
-        publishedAt: null,
-        result: { in: ['PASS', 'FAIL'] },
-      },
-      data: { publishedAt: new Date() },
-    });
+  private isGradedForCandidate(
+    attempt: {
+      status: string;
+      resultsPublishedAt: Date | null;
+      scoreRecord?: {
+        result: string | null;
+        publishedAt: Date | null;
+      } | null;
+    },
+    examResultsPublishedAt: Date | null,
+  ): boolean {
+    return this.isResultPublishedForCandidate(attempt, examResultsPublishedAt);
   }
 
   private async getParticipantWindow(examId: string, userId: string) {
@@ -411,20 +417,25 @@ export class StudentService {
     _actorName?: string,
   ) {
     await this.ensureParticipant(examId, userId);
+    await this.lifecycleService.syncExamStatus(examId);
+
     const exam = await this.prisma.exam.findUnique({
       where: { id: examId },
       include: { paper: { include: { paperQuestions: true } } },
     });
     if (!exam) throw new NotFoundException('Exam not found');
-    if (exam.status !== 'PUBLISHED' && exam.status !== 'IN_PROGRESS') {
-      throw new BadRequestException('Exam is not available');
+    if (exam.status !== 'IN_PROGRESS') {
+      throw new BadRequestException('Exam is not in progress');
     }
 
     const window = await this.getParticipantWindow(examId, userId);
     const startTime = window.startTime ?? exam.startTime;
     const endTime = window.endTime ?? exam.endTime;
     const now = new Date();
-    if (startTime && endTime && (now < startTime || now > endTime)) {
+    if (!startTime || !endTime) {
+      throw new BadRequestException('Exam time window is not configured');
+    }
+    if (!isWithinExamWindow(now, { startTime, endTime })) {
       throw new BadRequestException('Outside exam time window');
     }
 
@@ -453,11 +464,6 @@ export class StudentService {
         },
       });
     }
-
-    await this.prisma.exam.update({
-      where: { id: examId },
-      data: { status: 'IN_PROGRESS' },
-    });
 
     await this.auditService.log({
       actorId: userId,
@@ -804,7 +810,7 @@ export class StudentService {
     if (
       ['SUBMITTED', 'GRADING', 'TIMEOUT'].includes(attempt.status) ||
       (attempt.status === 'COMPLETED' &&
-        !this.isGradedForCandidate({ status: attempt.status, scoreRecord: score }))
+        !this.isGradingFinalized(attempt, score))
     ) {
       return {
         attemptId,
@@ -827,9 +833,31 @@ export class StudentService {
       };
     }
 
-    if (!score.publishedAt && score.result && score.result !== 'PENDING') {
-      await this.ensureResultsPublished([attemptId]);
-      score = await this.prisma.scoreRecord.findUnique({ where: { attemptId } });
+    if (!exam?.resultsPublishedAt) {
+      return {
+        attemptId,
+        examTitle: exam?.title,
+        status: 'pending',
+        graded: false,
+        submittedAt: attempt.submittedAt,
+        message: 'Results not yet published',
+      };
+    }
+
+    if (
+      !this.isResultPublishedForCandidate(
+        { status: attempt.status, resultsPublishedAt: attempt.resultsPublishedAt, scoreRecord: score },
+        exam.resultsPublishedAt,
+      )
+    ) {
+      return {
+        attemptId,
+        examTitle: exam?.title,
+        status: 'pending',
+        graded: false,
+        submittedAt: attempt.submittedAt,
+        message: 'Results not yet published',
+      };
     }
 
     const answerRecords = await this.prisma.answerRecord.findMany({

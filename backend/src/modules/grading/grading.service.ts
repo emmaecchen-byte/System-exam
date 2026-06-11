@@ -10,6 +10,7 @@ import { AuditService } from '../../common/services/audit.service';
 import { ROLES, SUBJECTIVE_QUESTION_TYPES } from '../../common/constants';
 import { RequestUser } from '../../common/decorators/auth.decorator';
 import { isAiGradedComment } from '../../common/utils/keyword-grade.util';
+import { ExamLifecycleService } from '../exams/exam-lifecycle.service';
 import {
   AssignGraderDto,
   GradeAnswerDto,
@@ -35,6 +36,7 @@ export class GradingService {
   constructor(
     private prisma: PrismaService,
     private auditService: AuditService,
+    private lifecycleService: ExamLifecycleService,
   ) {}
 
   private isAdmin(user: RequestUser): boolean {
@@ -482,14 +484,12 @@ export class GradingService {
           passScore,
           result,
           reviewedAt: now,
-          publishedAt: now,
         },
         update: {
           subjectiveScore,
           totalScore,
           result,
           reviewedAt: now,
-          publishedAt: now,
         },
       });
 
@@ -513,6 +513,8 @@ export class GradingService {
       afterData: { subjectiveScore, totalScore, result, status: 'COMPLETED' },
       reason: 'Grading submitted',
     });
+
+    await this.lifecycleService.maybeCompleteExam(attempt.examId);
 
     return {
       attemptId,

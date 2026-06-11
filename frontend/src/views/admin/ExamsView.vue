@@ -34,7 +34,7 @@ const list = ref<ExamListItem[]>([]);
 const categories = ref<Array<{ id: string; name: string }>>([]);
 
 const qrDialogVisible = ref(false);
-const qrSession = ref<{ id: string; name: string } | null>(null);
+const qrSession = ref<{ id: string; name: string; endTime?: string } | null>(null);
 const sessionPickerVisible = ref(false);
 const qrLoadingExamId = ref<string | null>(null);
 const sessionPickerExamTitle = ref('');
@@ -76,7 +76,7 @@ function canClose(row: ExamListItem) {
 }
 
 function canArchive(row: ExamListItem) {
-  return row.status !== 'DRAFT' && row.status !== 'ARCHIVED';
+  return row.status === 'COMPLETED' || row.status === 'PENDING_GRADING';
 }
 
 async function load() {
@@ -109,8 +109,8 @@ function editExam(row: ExamListItem) {
   router.push(`${examBasePath.value}/${row.id}/edit`);
 }
 
-function openQrSession(session: Pick<ExamSession, 'id' | 'name'>) {
-  qrSession.value = { id: session.id, name: session.name };
+function openQrSession(session: Pick<ExamSession, 'id' | 'name' | 'endTime'>) {
+  qrSession.value = { id: session.id, name: session.name, endTime: session.endTime };
   sessionPickerVisible.value = false;
   qrDialogVisible.value = true;
 }
@@ -369,6 +369,7 @@ onMounted(async () => {
       v-model:visible="qrDialogVisible"
       :session-id="qrSession.id"
       :session-name="qrSession.name"
+      :session-end-time="qrSession.endTime"
     />
   </div>
 </template>

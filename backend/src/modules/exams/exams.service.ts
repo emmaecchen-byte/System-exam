@@ -7,12 +7,14 @@ import { ContentStatus, ExamStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.module';
 import { AuditService } from '../../common/services/audit.service';
 import { CreateExamDto, QueryExamDto, UpdateExamDto } from './dto/exam.dto';
+import { ExamLifecycleService } from './exam-lifecycle.service';
 import { SessionsService } from './sessions.service';
 
 const examInclude = {
   category: { select: { id: true, name: true } },
   paper: { select: { id: true, title: true, version: true, totalScore: true, status: true } },
   createdBy: { select: { id: true, name: true } },
+  resultsPublishedBy: { select: { id: true, name: true } },
   _count: { select: { sessions: true, participants: true, attempts: true } },
 } satisfies Prisma.ExamInclude;
 
@@ -22,6 +24,7 @@ export class ExamsService {
     private prisma: PrismaService,
     private auditService: AuditService,
     private sessionsService: SessionsService,
+    private lifecycleService: ExamLifecycleService,
   ) {}
 
   async findAll(query: QueryExamDto) {
@@ -212,9 +215,13 @@ export class ExamsService {
       }
     }
 
+    const now = new Date();
     const published = await this.prisma.exam.update({
       where: { id },
-      data: { status: ExamStatus.PUBLISHED },
+      data: {
+        status: ExamStatus.PUBLISHED,
+        publishedAt: now,
+      },
       include: examInclude,
     });
 
@@ -239,9 +246,14 @@ export class ExamsService {
       throw new BadRequestException('Only published or in-progress exams can be closed');
     }
 
+    const closeStatus = await this.lifecycleService.resolveCloseStatus(id);
+    const now = new Date();
     const closed = await this.prisma.exam.update({
       where: { id },
-      data: { status: ExamStatus.COMPLETED },
+      data: {
+        status: closeStatus,
+        closedAt: now,
+      },
       include: examInclude,
     });
 
@@ -263,11 +275,23 @@ export class ExamsService {
   }
 
   async archive(id: string, actorId?: string) {
-    await this.getExamOrThrow(id);
+    const exam = await this.getExamOrThrow(id);
+    if (
+      exam.status !== ExamStatus.COMPLETED &&
+      exam.status !== ExamStatus.PENDING_GRADING
+    ) {
+      throw new BadRequestException(
+        'Only completed or pending-grading exams can be archived',
+      );
+    }
 
+    const now = new Date();
     const archived = await this.prisma.exam.update({
       where: { id },
-      data: { status: ExamStatus.ARCHIVED },
+      data: {
+        status: ExamStatus.ARCHIVED,
+        archivedAt: now,
+      },
       include: examInclude,
     });
 
@@ -288,6 +312,105 @@ export class ExamsService {
     return this.toResponse(archived);
   }
 
+  async publishResults(examId: string, actorId: string) {
+    const exam = await this.getExamOrThrow(examId);
+    if (exam.resultsPublishedAt) {
+      throw new BadRequestException('Results are already published for this exam');
+    }
+
+    const now = new Date();
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.exam.update({
+        where: { id: examId },
+        data: {
+          resultsPublishedAt: now,
+          resultsPublishedById: actorId,
+        },
+      });
+
+      await tx.examAttempt.updateMany({
+        where: { examId },
+        data: { resultsPublishedAt: now },
+      });
+
+      const attemptIds = (
+        await tx.examAttempt.findMany({
+          where: { examId },
+          select: { id: true },
+        })
+      ).map((a) => a.id);
+
+      if (attemptIds.length) {
+        await tx.scoreRecord.updateMany({
+          where: {
+            attemptId: { in: attemptIds },
+            result: { in: ['PASS', 'FAIL'] },
+          },
+          data: { publishedAt: now },
+        });
+      }
+    });
+
+    await this.auditService.log({
+      actorId,
+      action: 'PUBLISH',
+      objectType: 'Exam',
+      objectId: examId,
+      objectName: exam.title,
+      reason: 'Exam results published to candidates',
+    });
+
+    return { success: true, publishedAt: now.toISOString() };
+  }
+
+  async unpublishResults(examId: string, actorId: string) {
+    const exam = await this.getExamOrThrow(examId);
+    if (!exam.resultsPublishedAt) {
+      throw new BadRequestException('Results are not published for this exam');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.exam.update({
+        where: { id: examId },
+        data: {
+          resultsPublishedAt: null,
+          resultsPublishedById: null,
+        },
+      });
+
+      await tx.examAttempt.updateMany({
+        where: { examId },
+        data: { resultsPublishedAt: null },
+      });
+
+      const attemptIds = (
+        await tx.examAttempt.findMany({
+          where: { examId },
+          select: { id: true },
+        })
+      ).map((a) => a.id);
+
+      if (attemptIds.length) {
+        await tx.scoreRecord.updateMany({
+          where: { attemptId: { in: attemptIds } },
+          data: { publishedAt: null },
+        });
+      }
+    });
+
+    await this.auditService.log({
+      actorId,
+      action: 'UPDATE',
+      objectType: 'Exam',
+      objectId: examId,
+      objectName: exam.title,
+      reason: 'Exam results unpublished — hidden from candidates',
+    });
+
+    return { success: true };
+  }
+
   private async validatePaper(paperId: string, passScore: number) {
     const paper = await this.prisma.paper.findUnique({
       where: { id: paperId },
@@ -298,6 +421,12 @@ export class ExamsService {
     }
     if (paper._count.paperQuestions === 0) {
       throw new BadRequestException('Selected paper has no questions');
+    }
+    if (Number(paper.totalScore) <= 0) {
+      throw new BadRequestException('Paper total score must be greater than zero');
+    }
+    if (passScore < 0) {
+      throw new BadRequestException('Passing score must be zero or greater');
     }
     if (passScore > Number(paper.totalScore)) {
       throw new BadRequestException('Passing score cannot exceed paper total score');
@@ -340,6 +469,12 @@ export class ExamsService {
       participantCount: exam._count.participants,
       attemptCount: exam._count.attempts,
       isEditable: exam.status === ExamStatus.DRAFT || exam.status === ExamStatus.READY,
+      resultsPublishedAt: exam.resultsPublishedAt,
+      resultsPublishedBy: exam.resultsPublishedBy,
+      resultsPublished: Boolean(exam.resultsPublishedAt),
+      publishedAt: exam.publishedAt,
+      closedAt: exam.closedAt,
+      archivedAt: exam.archivedAt,
       createdBy: exam.createdBy,
       createdAt: exam.createdAt,
       updatedAt: exam.updatedAt,

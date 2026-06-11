@@ -135,8 +135,9 @@ model User {
   userRoles        UserRole[]
   questionsCreated Question[]        @relation("QuestionCreator")
   papersCreated    Paper[]           @relation("PaperCreator")
-  examsCreated     Exam[]            @relation("ExamCreator")
-  participants     ExamParticipant[]
+  examsCreated            Exam[]            @relation("ExamCreator")
+  examsResultsPublished   Exam[]            @relation("ExamResultsPublisher")
+  participants            ExamParticipant[]
   attempts         ExamAttempt[]
   scoreRecords     ScoreRecord[]
   reviews          AnswerRecord[]    @relation("AnswerReviewer")
@@ -308,13 +309,19 @@ model Exam {
   randomOptionOrder      Boolean    @default(false) @map("random_option_order")
   showResultToCandidate  Boolean    @default(false) @map("show_result_to_candidate")
   showAnswersToCandidate Boolean    @default(false) @map("show_answers_to_candidate")
+  resultsPublishedAt     DateTime?  @map("results_published_at")
+  resultsPublishedById   String?    @map("results_published_by")
+  publishedAt            DateTime?  @map("published_at")
+  closedAt               DateTime?  @map("closed_at")
+  archivedAt             DateTime?  @map("archived_at")
   createdById            String     @map("created_by")
   createdAt              DateTime   @default(now()) @map("created_at")
   updatedAt              DateTime   @updatedAt @map("updated_at")
 
-  category     ExamCategory      @relation(fields: [categoryId], references: [id])
-  paper        Paper             @relation(fields: [paperId], references: [id])
-  createdBy    User              @relation("ExamCreator", fields: [createdById], references: [id])
+  category           ExamCategory      @relation(fields: [categoryId], references: [id])
+  paper              Paper             @relation(fields: [paperId], references: [id])
+  createdBy          User              @relation("ExamCreator", fields: [createdById], references: [id])
+  resultsPublishedBy User?             @relation("ExamResultsPublisher", fields: [resultsPublishedById], references: [id])
   sessions     ExamSession[]
   participants ExamParticipant[]
   attempts     ExamAttempt[]
@@ -331,13 +338,16 @@ model ExamSession {
   endTime     DateTime      @map("end_time")
   location    String?
   notes       String?
-  qrTokenHash   String?       @unique @map("qr_token_hash")
-  qrTokenEnc    String?       @map("qr_token_enc")
-  qrExpiresAt   DateTime?     @map("qr_expires_at")
-  qrCreatedAt   DateTime?     @map("qr_created_at")
-  qrMaxScans    Int?          @map("qr_max_scans")
-  qrScanCount   Int           @default(0) @map("qr_scan_count")
-  qrCandidateId String?       @map("qr_candidate_id")
+  qrTokenHash        String?       @unique @map("qr_token_hash")
+  qrTokenEnc         String?       @map("qr_token_enc")
+  qrExpiresAt        DateTime?     @map("qr_expires_at")
+  qrCreatedAt        DateTime?     @map("qr_created_at")
+  qrIsValid          Boolean       @default(true) @map("qr_is_valid")
+  qrInvalidatedAt    DateTime?     @map("qr_invalidated_at")
+  qrInvalidatedById  String?       @map("qr_invalidated_by")
+  qrMaxScans         Int?          @map("qr_max_scans")
+  qrScanCount        Int           @default(0) @map("qr_scan_count")
+  qrCandidateId      String?       @map("qr_candidate_id")
   status        SessionStatus @default(DRAFT)
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
@@ -382,6 +392,7 @@ model ExamAttempt {
   lastAutoSavedAt      DateTime?     @map("last_auto_saved_at")
   assignedGraderId     String?       @map("assigned_grader_id")
   needsQualityReview   Boolean       @default(false) @map("needs_quality_review")
+  resultsPublishedAt DateTime?     @map("results_published_at")
   createdAt            DateTime      @default(now()) @map("created_at")
   updatedAt            DateTime      @updatedAt @map("updated_at")
 

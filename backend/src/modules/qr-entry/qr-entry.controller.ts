@@ -5,6 +5,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Response } from 'express';
 import { IsString } from 'class-validator';
 import { Public } from '../../common/decorators/current-user.decorator';
+import { renderQrEntryErrorHtml } from './qr-entry-html.util';
 import { QrEntryService } from './qr-entry.service';
 
 class VerifyEntryDto {
@@ -36,19 +37,31 @@ export class QrEntryController {
       return res.status(400).json({ status: 'invalid', message: 'Missing exam entry token.' });
     }
 
+    const trimmed = token.trim();
     const wantsJson = accept?.includes('application/json');
+    const result = await this.qrEntryService.previewToken(trimmed);
+
     if (!wantsJson) {
+      if (
+        result.status === 'expired'
+        || result.status === 'invalidated'
+        || result.status === 'invalid'
+        || result.status === 'scan_limit_reached'
+      ) {
+        const statusCode = result.status === 'invalid' ? 404 : 410;
+        return res.status(statusCode).type('text/html').send(renderQrEntryErrorHtml(result));
+      }
+
       const frontend = (this.config.get<string>('FRONTEND_URL') ?? 'http://localhost:5173').replace(
         /\/$/,
         '',
       );
       return res.redirect(
         302,
-        `${frontend}/exam-entry?token=${encodeURIComponent(token.trim())}`,
+        `${frontend}/exam-entry?token=${encodeURIComponent(trimmed)}`,
       );
     }
 
-    const result = await this.qrEntryService.previewToken(token.trim());
     return res.json(result);
   }
 

@@ -22,6 +22,8 @@ export interface ExamListItem {
   updatedAt: string;
 }
 
+export type QrCodeStatus = 'none' | 'active' | 'expired' | 'invalidated';
+
 export interface ExamSession {
   id: string;
   examId: string;
@@ -33,12 +35,25 @@ export interface ExamSession {
   status: string;
   statusLabel: string;
   participantCount: number;
+  qrExpiresAt?: string | null;
+  qrCreatedAt?: string | null;
+  qrIsValid?: boolean;
+  qrInvalidatedAt?: string | null;
+  qrInvalidatedById?: string | null;
+  hasQrToken?: boolean;
+  qrStatus?: QrCodeStatus;
 }
 
 export interface ExamDetail extends ExamListItem {
   sessions: ExamSession[];
   showResultToCandidate: boolean;
   showAnswersToCandidate: boolean;
+  resultsPublishedAt: string | null;
+  resultsPublishedBy: { id: string; name: string } | null;
+  resultsPublished: boolean;
+  publishedAt: string | null;
+  closedAt: string | null;
+  archivedAt: string | null;
 }
 
 export interface ExamFormData {
@@ -96,6 +111,14 @@ export function archiveExam(id: string) {
   return api.post(`/admin/exams/${id}/archive`);
 }
 
+export function publishExamResults(id: string) {
+  return api.post<{ success: boolean; publishedAt: string }>(`/admin/exams/${id}/publish-results`);
+}
+
+export function unpublishExamResults(id: string) {
+  return api.post<{ success: boolean }>(`/admin/exams/${id}/unpublish-results`);
+}
+
 export function fetchExamSessions(examId: string) {
   return api.get<ExamSession[]>(`/admin/exams/${examId}/sessions`);
 }
@@ -123,6 +146,10 @@ export function addSessionParticipants(
   return api.post(`/admin/sessions/${sessionId}/add-participants`, data);
 }
 
+export function fetchSession(sessionId: string) {
+  return api.get<ExamSession>(`/admin/sessions/${sessionId}`);
+}
+
 export function fetchSessionParticipants(sessionId: string) {
   return api.get(`/admin/sessions/${sessionId}/participants`);
 }
@@ -134,6 +161,7 @@ export interface QrCodeResponse {
   expiresAt: string;
   createdAt?: string | null;
   maxScans?: number | null;
+  qrStatus?: QrCodeStatus;
   qrDataUrl: string;
   qrPngDataUrl: string;
   qrImageUrl?: string;

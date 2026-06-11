@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Loading, Menu, WarningFilled } from '@element-plus/icons-vue';
+import { ArrowLeft, ArrowRight, Loading, Menu, WarningFilled } from '@element-plus/icons-vue';
 import {
   AttemptDetail,
   fetchAttempt,
@@ -12,6 +12,7 @@ import {
 import { useExamAuditEvents } from '@/composables/useExamAuditEvents';
 import { useExamAutoSave } from '@/composables/useExamAutoSave';
 import { useExamTabLock } from '@/composables/useExamTabLock';
+import { useExamTimer } from '@/composables/useExamTimer';
 import QuestionPalette from '@/components/exam/QuestionPalette.vue';
 import QuestionRenderer from '@/components/exam/QuestionRenderer.vue';
 import {
@@ -25,7 +26,7 @@ import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 const route = useRoute();
 const router = useRouter();
 const { t } = useI18n();
-const { examTitle, personName } = useSeedDataLabels();
+const { examTitle } = useSeedDataLabels();
 const attemptId = route.params.attemptId as string;
 
 const loading = ref(true);
@@ -40,9 +41,6 @@ const currentIndex = ref(0);
 const answers = reactive<Record<string, Record<string, unknown>>>({});
 const marked = reactive<Record<string, boolean>>({});
 const visited = ref<Set<number>>(new Set());
-
-const remainingSeconds = ref(0);
-let timerId: ReturnType<typeof setInterval> | undefined;
 
 const { blocked: tabBlocked } = useExamTabLock(attemptId);
 useExamAuditEvents(() => attemptId);
@@ -59,13 +57,6 @@ const autoSave = useExamAutoSave({
 
 const questions = computed(() => attempt.value?.questions ?? []);
 const currentQuestion = computed(() => questions.value[currentIndex.value]);
-const formattedTime = computed(() => {
-  const m = Math.floor(remainingSeconds.value / 60);
-  const s = remainingSeconds.value % 60;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-});
-const timerUrgent = computed(() => remainingSeconds.value <= 300);
-const timerCritical = computed(() => remainingSeconds.value <= 10);
 
 const paletteStatuses = computed(() =>
   questions.value.map((q, index) =>
@@ -96,6 +87,21 @@ const saveStatusLabel = computed(() => {
       return '';
   }
 });
+
+async function handleTimeout() {
+  if (examSubmitted.value || autoSubmitting.value) return;
+  autoSubmitting.value = true;
+  try {
+    await finalizeSubmit('TIMEOUT');
+  } catch {
+    autoSubmitting.value = false;
+  }
+}
+
+const examTimer = useExamTimer(attemptId, () => {
+  void handleTimeout();
+});
+const { formattedTime, timerUrgent, timerCritical, start: startTimer, stop: stopTimer } = examTimer;
 
 function markVisited(index: number) {
   visited.value = new Set([...visited.value, index]);
@@ -135,7 +141,7 @@ function onTouchStart(event: TouchEvent) {
 function onTouchEnd(event: TouchEvent) {
   if (examLocked.value) return;
   const delta = (event.changedTouches[0]?.clientX ?? 0) - touchStartX;
-  if (Math.abs(delta) < 60) return;
+  if (Math.abs(delta) < 72) return;
   if (delta < 0 && currentIndex.value < questions.value.length - 1) void nextQuestion();
   if (delta > 0 && currentIndex.value > 0) void prevQuestion();
 }
@@ -148,9 +154,13 @@ function beforeUnloadHandler(event: BeforeUnloadEvent) {
   }
 }
 
+function onResize() {
+  isMobile.value = window.matchMedia('(max-width: 768px)').matches;
+}
+
 async function finalizeSubmit(submitType: 'MANUAL' | 'TIMEOUT') {
   examSubmitted.value = true;
-  clearInterval(timerId);
+  stopTimer();
   try {
     await autoSave.saveToServer(false);
     await submitAttempt(attemptId, submitType);
@@ -175,10 +185,10 @@ async function finalizeSubmit(submitType: 'MANUAL' | 'TIMEOUT') {
 async function handleSubmit() {
   if (examLocked.value) return;
 
-  if (remainingSeconds.value <= 10) {
+  if (examTimer.remainingSeconds.value <= 30) {
     try {
       await ElMessageBox.confirm(
-        t('student.lessThan10Seconds'),
+        t('student.lessThan30Seconds'),
         t('student.confirmSubmission'),
         { confirmButtonText: t('student.submitNow'), cancelButtonText: t('student.continueBtn'), type: 'warning' },
       );
@@ -210,16 +220,6 @@ async function handleSubmit() {
   }
 }
 
-async function handleTimeout() {
-  if (examSubmitted.value || autoSubmitting.value) return;
-  autoSubmitting.value = true;
-  try {
-    await finalizeSubmit('TIMEOUT');
-  } catch {
-    autoSubmitting.value = false;
-  }
-}
-
 watch(answers, () => autoSave.onAnswerChange(), { deep: true });
 watch(marked, () => autoSave.onAnswerChange(), { deep: true });
 
@@ -235,9 +235,7 @@ watch(tabBlocked, (blocked) => {
 
 onMounted(async () => {
   window.addEventListener('beforeunload', beforeUnloadHandler);
-  window.addEventListener('resize', () => {
-    isMobile.value = window.matchMedia('(max-width: 768px)').matches;
-  });
+  window.addEventListener('resize', onResize);
 
   if (tabBlocked.value) {
     loading.value = false;
@@ -253,7 +251,6 @@ onMounted(async () => {
   try {
     const { data } = await fetchAttempt(attemptId);
     attempt.value = data;
-    remainingSeconds.value = data.remainingSeconds;
     currentIndex.value = data.currentQuestionIndex ?? 0;
 
     const state = initAnswerState(data.questions);
@@ -265,15 +262,7 @@ onMounted(async () => {
     await autoSave.mergeDraftFromLocal(data);
     markVisited(currentIndex.value);
 
-    if (remainingSeconds.value <= 0) {
-      void handleTimeout();
-      return;
-    }
-
-    timerId = setInterval(() => {
-      remainingSeconds.value -= 1;
-      if (remainingSeconds.value <= 0) void handleTimeout();
-    }, 1000);
+    startTimer(data.remainingSeconds);
   } catch {
     ElMessage.error(t('student.loadAttemptFailed'));
     router.push('/candidate');
@@ -283,26 +272,30 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  clearInterval(timerId);
+  stopTimer();
   window.removeEventListener('beforeunload', beforeUnloadHandler);
+  window.removeEventListener('resize', onResize);
 });
 </script>
 
 <template>
-  <div v-loading="loading" class="exam-taking" :class="{ locked: examLocked }">
+  <div v-loading="loading" class="exam-taking" :class="{ locked: examLocked, mobile: isMobile }">
     <div v-if="autoSubmitting" class="timeout-overlay">
       <el-icon class="spin" :size="32"><Loading /></el-icon>
       <h2>{{ t('student.timesUp') }}</h2>
       <p>{{ t('student.timesUpHint') }}</p>
     </div>
 
+    <!-- Sticky header: question progress + countdown always visible -->
     <header class="exam-header">
-      <div class="header-main">
-        <div class="title-block">
-          <h1>{{ examTitle(undefined, attempt?.examTitle) }}</h1>
-          <p>{{ personName({ name: attempt?.candidateName }) }}</p>
+      <div class="header-row">
+        <div class="progress-block">
+          <span class="q-progress">
+            {{ t('student.questionOf', { current: currentIndex + 1, total: questions.length }) }}
+          </span>
+          <span v-if="attempt" class="exam-name">{{ examTitle(undefined, attempt.examTitle) }}</span>
         </div>
-        <div class="timer" :class="{ urgent: timerUrgent, critical: timerCritical }">
+        <div class="timer" :class="{ urgent: timerUrgent, critical: timerCritical }" role="timer" aria-live="polite">
           <span class="timer-label">{{ t('student.timeLeft') }}</span>
           <strong>{{ formattedTime }}</strong>
         </div>
@@ -319,6 +312,16 @@ onUnmounted(() => {
           <el-icon><WarningFilled /></el-icon>
           {{ t('student.connectionLost') }}
         </span>
+        <button
+          v-if="isMobile"
+          type="button"
+          class="palette-chip"
+          :disabled="examLocked"
+          @click="paletteOpen = true"
+        >
+          <el-icon><Menu /></el-icon>
+          {{ t('student.paletteChip') }}
+        </button>
       </div>
     </header>
 
@@ -338,34 +341,28 @@ onUnmounted(() => {
         @touchstart.passive="onTouchStart"
         @touchend.passive="onTouchEnd"
       >
-        <div v-if="isMobile" class="mobile-palette-toggle">
-          <el-button :icon="Menu" :disabled="examLocked" @click="paletteOpen = true">
-            {{ t('student.questionList', { current: currentIndex + 1, total: questions.length }) }}
-          </el-button>
-        </div>
-
         <fieldset :disabled="examLocked" class="exam-fieldset">
-          <el-card v-if="currentQuestion" shadow="never" class="question-card">
+          <article v-if="currentQuestion" class="question-card">
             <div class="question-head">
-              <span class="q-number">{{ t('student.questionOf', { current: currentIndex + 1, total: questions.length }) }}</span>
               <span class="q-score">{{ currentQuestion.score }} {{ t('student.ptsAbbr') }}</span>
+              <button
+                type="button"
+                class="mark-btn"
+                :class="{ active: marked[currentQuestion.id] }"
+                @click="toggleMarkForReview"
+              >
+                {{ marked[currentQuestion.id] ? t('student.unmarkReview') : t('student.markForReview') }}
+              </button>
             </div>
             <h2 class="stem">{{ currentQuestion.stem }}</h2>
             <QuestionRenderer
               v-model="answers[currentQuestion.id]"
               :question="currentQuestion"
             />
-            <div class="question-actions">
-              <el-button
-                :type="marked[currentQuestion.id] ? 'warning' : 'default'"
-                @click="toggleMarkForReview"
-              >
-                {{ marked[currentQuestion.id] ? t('student.unmarkReview') : t('student.markForReview') }}
-              </el-button>
-            </div>
-          </el-card>
+          </article>
 
-          <div class="nav-row">
+          <!-- Desktop navigation -->
+          <div v-if="!isMobile" class="desktop-nav">
             <el-button :disabled="currentIndex === 0 || examLocked" @click="prevQuestion">
               {{ t('student.previous') }}
             </el-button>
@@ -378,35 +375,60 @@ onUnmounted(() => {
               {{ t('student.saveAndNext') }}
             </el-button>
             <el-button
-              v-else
-              type="primary"
-              plain
+              type="danger"
+              size="large"
+              class="submit-btn-desktop"
+              :loading="submitting"
               :disabled="examLocked"
-              @click="autoSave.saveToServer(false)"
+              @click="handleSubmit"
             >
-              {{ t('common.save') }}
+              {{ t('student.submitExam') }}
             </el-button>
           </div>
-
-          <el-button
-            type="danger"
-            size="large"
-            class="submit-btn"
-            :loading="submitting"
-            :disabled="examLocked"
-            @click="handleSubmit"
-          >
-            {{ t('student.submitExam') }}
-          </el-button>
         </fieldset>
       </main>
     </div>
+
+    <!-- Mobile fixed bottom bar -->
+    <nav v-if="isMobile && attempt && !tabBlocked" class="mobile-bottom-bar">
+      <div class="bottom-nav-row">
+        <button
+          type="button"
+          class="nav-btn"
+          :disabled="currentIndex === 0 || examLocked"
+          @click="prevQuestion"
+        >
+          <el-icon><ArrowLeft /></el-icon>
+          {{ t('student.previous') }}
+        </button>
+        <span class="nav-indicator">{{ currentIndex + 1 }} / {{ questions.length }}</span>
+        <button
+          type="button"
+          class="nav-btn primary"
+          :disabled="currentIndex >= questions.length - 1 || examLocked"
+          @click="nextQuestion"
+        >
+          {{ t('student.next') }}
+          <el-icon><ArrowRight /></el-icon>
+        </button>
+      </div>
+      <button
+        type="button"
+        class="submit-btn-mobile"
+        :disabled="examLocked"
+        @click="handleSubmit"
+      >
+        <span v-if="submitting" class="submit-loading">{{ t('student.submitting') }}</span>
+        <span v-else>{{ t('student.submitExam') }}</span>
+      </button>
+    </nav>
 
     <el-drawer
       v-model="paletteOpen"
       :title="t('student.questionPalette')"
       direction="btt"
-      size="70%"
+      size="72%"
+      class="palette-drawer"
     >
       <QuestionPalette
         compact
@@ -422,24 +444,34 @@ onUnmounted(() => {
 <style scoped>
 .exam-taking {
   min-height: 100vh;
+  min-height: 100dvh;
   background: #f8fafc;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
+
+.exam-taking.mobile {
+  padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px));
+}
+
 .exam-taking.locked .exam-fieldset {
   pointer-events: none;
   opacity: 0.72;
 }
+
 .exam-fieldset {
   border: none;
   margin: 0;
   padding: 0;
   min-width: 0;
 }
+
 .timeout-overlay {
   position: fixed;
   inset: 0;
-  z-index: 100;
-  background: rgba(15, 23, 42, 0.85);
+  z-index: 200;
+  background: rgba(15, 23, 42, 0.88);
   color: #fff;
   display: flex;
   flex-direction: column;
@@ -448,154 +480,329 @@ onUnmounted(() => {
   text-align: center;
   padding: 24px;
 }
+
 .timeout-overlay h2 {
   margin: 16px 0 8px;
 }
+
 .spin {
   animation: spin 1s linear infinite;
 }
+
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
 .exam-header {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 30;
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
-  padding: 12px 16px;
+  padding: 10px 16px;
+  padding-top: max(10px, env(safe-area-inset-top, 0px));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
-.header-main {
+
+.header-row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
-  align-items: flex-start;
 }
-.title-block h1 {
-  margin: 0;
-  font-size: 1.1rem;
-  line-height: 1.3;
+
+.progress-block {
+  min-width: 0;
+  flex: 1;
 }
-.title-block p {
-  margin: 4px 0 0;
-  color: #6b7280;
+
+.q-progress {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.exam-name {
+  display: block;
+  margin-top: 2px;
   font-size: 13px;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
 .timer {
-  text-align: right;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: #fef3c7;
-  border: 1px solid #fcd34d;
-  min-width: 96px;
+  flex-shrink: 0;
+  text-align: center;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: #fef9c3;
+  border: 2px solid #fde047;
+  min-width: 88px;
 }
+
 .timer.urgent {
-  background: #fee2e2;
-  border-color: #fca5a5;
-  color: #b91c1c;
+  background: #ffedd5;
+  border-color: #fdba74;
+  color: #9a3412;
 }
+
 .timer.critical {
-  animation: pulse 1s ease-in-out infinite;
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #b91c1c;
+  animation: pulse 0.8s ease-in-out infinite;
 }
+
 @keyframes pulse {
-  50% { transform: scale(1.04); }
+  50% { transform: scale(1.05); }
 }
+
 .timer-label {
   display: block;
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+  font-weight: 600;
 }
+
 .timer strong {
-  font-size: 1.25rem;
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
 }
+
 .header-meta {
   margin-top: 8px;
-  font-size: 12px;
+  font-size: 13px;
   display: flex;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
   align-items: center;
 }
-.save-status {
-  color: #6b7280;
-}
+
+.save-status { color: #6b7280; }
 .save-status.saving { color: #2563eb; }
 .save-status.saved { color: #16a34a; font-weight: 600; }
 .save-status.offline,
 .save-status.queued { color: #b45309; }
 .save-status.error { color: #dc2626; }
+
 .offline {
   color: #b45309;
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
+
+.palette-chip {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: #f9fafb;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .exam-body {
   display: grid;
   grid-template-columns: 260px 1fr;
   gap: 16px;
+  flex: 1;
   max-width: 1200px;
+  width: 100%;
   margin: 0 auto;
   padding: 16px;
 }
+
 .sidebar {
   position: sticky;
-  top: 110px;
+  top: 100px;
   align-self: start;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   padding: 14px;
 }
+
 .sidebar h3 {
   margin: 0 0 12px;
   font-size: 14px;
 }
+
 .question-panel {
   min-width: 0;
 }
-.mobile-palette-toggle {
-  margin-bottom: 12px;
-}
+
 .question-card {
-  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 16px;
 }
+
 .question-head {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.q-score {
+  font-size: 14px;
   color: #6b7280;
+  font-weight: 600;
+}
+
+.mark-btn {
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
   font-size: 13px;
+  color: #6b7280;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mark-btn.active {
+  border-color: #f59e0b;
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.stem {
+  margin: 0 0 20px;
+  font-size: 17px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: #111827;
+}
+
+.desktop-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+  align-items: center;
+}
+
+.submit-btn-desktop {
+  margin-left: auto;
+  min-height: 44px;
+}
+
+.mobile-bottom-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  background: #fff;
+  border-top: 1px solid #e5e7eb;
+  padding: 10px 12px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.bottom-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
 }
-.stem {
-  margin: 0 0 16px;
-  font-size: 1.05rem;
-  line-height: 1.55;
-  white-space: pre-wrap;
+
+.nav-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
-.question-actions {
-  margin-top: 16px;
+
+.nav-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
-.nav-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 16px 0;
+
+.nav-btn.primary {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
 }
-.submit-btn {
+
+.nav-indicator {
+  flex-shrink: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #6b7280;
+  min-width: 52px;
+  text-align: center;
+}
+
+.submit-btn-mobile {
   width: 100%;
-  min-height: 48px;
+  min-height: 52px;
+  padding: 14px 16px;
+  border: none;
+  border-radius: 12px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.submit-btn-mobile:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.submit-btn-mobile:active:not(:disabled) {
+  background: #b91c1c;
+}
+
+.submit-loading {
+  opacity: 0.9;
 }
 
 @media (max-width: 768px) {
   .exam-body {
     grid-template-columns: 1fr;
     padding: 12px;
-    padding-bottom: 24px;
+    padding-bottom: 8px;
   }
-  .title-block h1 {
-    font-size: 1rem;
+
+  .question-card {
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  .stem {
+    font-size: 16px;
   }
 }
 </style>

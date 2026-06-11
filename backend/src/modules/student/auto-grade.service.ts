@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { AttemptStatus, ExamStatus, PassResult, Prisma } from '@prisma/client';
+import { AttemptStatus, PassResult, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.module';
 import {
   aiReviewComment,
@@ -232,7 +232,7 @@ export class AutoGradeService {
         data: { status },
       });
 
-      const publishResults = !needsManual && result !== 'PENDING';
+      const gradingComplete = !needsManual && result !== 'PENDING';
       await tx.scoreRecord.upsert({
         where: { attemptId },
         create: {
@@ -243,22 +243,17 @@ export class AutoGradeService {
           totalScore,
           passScore: attempt.exam.passScore,
           result,
-          ...(publishResults ? { publishedAt: new Date(), reviewedAt: new Date() } : {}),
+          ...(gradingComplete ? { reviewedAt: new Date() } : {}),
         },
         update: {
           objectiveScore,
           subjectiveScore,
           totalScore,
           result,
-          ...(publishResults ? { publishedAt: new Date(), reviewedAt: new Date() } : {}),
+          ...(gradingComplete ? { reviewedAt: new Date() } : {}),
         },
       });
 
-      const examStatus: ExamStatus = needsManual ? 'PENDING_GRADING' : 'COMPLETED';
-      await tx.exam.update({
-        where: { id: attempt.examId },
-        data: { status: examStatus },
-      });
     });
 
     const totalScore = objectiveScore + subjectiveScore;

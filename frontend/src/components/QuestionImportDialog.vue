@@ -10,9 +10,16 @@ import {
   validateQuestionImport,
 } from '@/api/questions';
 import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
+import {
+  isExcelFile,
+  OFFICIAL_EXCEL_HEADERS,
+  validateExcelQuestionFile,
+} from '@/utils/questionExcelImport';
 
 const { t } = useI18n();
 const { categoryName } = useSeedDataLabels();
+
+const officialHeaders = OFFICIAL_EXCEL_HEADERS;
 
 defineProps<{ visible: boolean }>();
 const emit = defineEmits<{ 'update:visible': [boolean]; imported: [] }>();
@@ -24,6 +31,9 @@ const importing = ref(false);
 const skipInvalid = ref(true);
 const validation = ref<ImportValidateResult | null>(null);
 const importSummary = ref('');
+const clientColumnErrors = ref<string[]>([]);
+const clientColumnWarnings = ref<string[]>([]);
+const clientRowErrors = ref<Array<{ row: number; message: string }>>([]);
 
 function close() {
   emit('update:visible', false);
@@ -35,6 +45,9 @@ function reset() {
   file.value = null;
   validation.value = null;
   importSummary.value = '';
+  clientColumnErrors.value = [];
+  clientColumnWarnings.value = [];
+  clientRowErrors.value = [];
 }
 
 function onFileChange(uploadFile: { raw?: File }) {
@@ -46,6 +59,29 @@ async function validate() {
     ElMessage.warning(t('import.selectFile'));
     return;
   }
+
+  clientColumnErrors.value = [];
+  clientColumnWarnings.value = [];
+  clientRowErrors.value = [];
+
+  if (isExcelFile(file.value)) {
+    try {
+      const buffer = await file.value.arrayBuffer();
+      const check = validateExcelQuestionFile(buffer);
+      clientColumnWarnings.value = check.warnings;
+      clientRowErrors.value = check.rowErrors;
+
+      if (!check.valid) {
+        clientColumnErrors.value = check.errors;
+        ElMessage.error(t('import.excelColumnInvalid'));
+        return;
+      }
+    } catch {
+      ElMessage.error(t('import.excelParseFailed'));
+      return;
+    }
+  }
+
   validating.value = true;
   try {
     const { data } = await validateQuestionImport(file.value);
@@ -90,6 +126,53 @@ async function confirmImport() {
         {{ t('import.downloadExcelTemplate') }}
       </el-button>
       <p class="hint">{{ t('import.uploadHint') }}</p>
+
+      <el-alert type="info" :closable="false" show-icon :title="t('import.excelColumnsTitle')">
+        <p class="columns-list">{{ officialHeaders.join(' · ') }}</p>
+        <ul class="columns-rules">
+          <li>{{ t('import.excelOptionsRule') }}</li>
+          <li>{{ t('import.excelTrueFalseRule') }}</li>
+          <li>{{ t('import.excelShortAnswerRule') }}</li>
+        </ul>
+      </el-alert>
+
+      <el-alert
+        v-if="clientColumnErrors.length"
+        type="error"
+        show-icon
+        :closable="false"
+        :title="t('import.excelColumnInvalid')"
+      >
+        <ul class="error-list">
+          <li v-for="(msg, i) in clientColumnErrors" :key="i">{{ msg }}</li>
+        </ul>
+      </el-alert>
+
+      <el-alert
+        v-if="clientColumnWarnings.length && !clientColumnErrors.length"
+        type="warning"
+        show-icon
+        :closable="false"
+        :title="t('import.excelColumnWarnings')"
+      >
+        <ul class="error-list">
+          <li v-for="(msg, i) in clientColumnWarnings" :key="i">{{ msg }}</li>
+        </ul>
+      </el-alert>
+
+      <el-alert
+        v-if="clientRowErrors.length"
+        type="error"
+        show-icon
+        :closable="false"
+        :title="t('import.validationErrors', { count: clientRowErrors.length })"
+      >
+        <ul class="error-list">
+          <li v-for="(e, i) in clientRowErrors.slice(0, 8)" :key="i">
+            {{ t('import.rowError', { row: e.row, message: e.message }) }}
+          </li>
+        </ul>
+      </el-alert>
       <el-upload
         drag
         :auto-upload="false"
@@ -241,5 +324,17 @@ async function confirmImport() {
   margin: 8px 0 0;
   padding-left: 18px;
   font-size: 13px;
+}
+.columns-list {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-family: ui-monospace, monospace;
+  line-height: 1.5;
+}
+.columns-rules {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.6;
 }
 </style>
