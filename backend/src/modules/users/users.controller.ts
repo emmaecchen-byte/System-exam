@@ -22,9 +22,21 @@ export class UsersController {
   findAll(
     @Query('search') search?: string,
     @Query('role') role?: string,
+    @Query('departmentId') departmentId?: string,
     @Query('includeInactive') includeInactive?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
-    return this.usersService.findAll(search, role, includeInactive === 'true');
+    const pageNum = page !== undefined ? Number(page) : undefined;
+    const pageSizeNum = pageSize !== undefined ? Number(pageSize) : undefined;
+    return this.usersService.findAll(
+      search,
+      role,
+      includeInactive === 'true',
+      pageNum,
+      pageSizeNum,
+      departmentId,
+    );
   }
 
   @Post()
@@ -43,6 +55,12 @@ export class UsersController {
   @RequirePermissions(PERMISSIONS.USER_MANAGE)
   remove(@Param('id') id: string) {
     return this.usersService.deleteUser(id);
+  }
+
+  @Post(':id/reset-password')
+  @RequirePermissions(PERMISSIONS.USER_MANAGE)
+  resetPassword(@Param('id') id: string) {
+    return this.usersService.resetUserPassword(id);
   }
 
   @Get('candidates/search')

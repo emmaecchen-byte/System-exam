@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Param, Post, Put, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { UserThrottlerGuard } from '../../common/guards/user-throttler.guard';
 import { Request } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequestUser } from '../../common/decorators/auth.decorator';
@@ -70,6 +72,8 @@ export class StudentController {
   }
 
   @Post('attempts/:attemptId/auto-save')
+  @UseGuards(UserThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   autoSave(
     @Param('attemptId') attemptId: string,
     @Body() dto: BatchSaveAnswersDto,

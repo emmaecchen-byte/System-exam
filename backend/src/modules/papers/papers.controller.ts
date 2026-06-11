@@ -7,12 +7,17 @@ import {
   Post,
   Put,
   Query,
+  Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import { Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions, RequestUser } from '../../common/decorators/auth.decorator';
 import { PERMISSIONS } from '../../common/constants';
 import { PapersService } from './papers.service';
+import { PaperAttachmentInterceptor } from './paper-attachment.interceptor';
 import {
   AddPaperQuestionsDto,
   CreatePaperDto,
@@ -41,8 +46,14 @@ export class PapersController {
   }
 
   @Post()
-  create(@Body() dto: CreatePaperDto, @CurrentUser() user: RequestUser) {
-    return this.papersService.create(dto, user.userId);
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(PaperAttachmentInterceptor)
+  create(
+    @Body() dto: CreatePaperDto,
+    @UploadedFile() attachment: Express.Multer.File | undefined,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.papersService.create(dto, user.userId, attachment);
   }
 
   @Get(':id/versions')
@@ -53,6 +64,25 @@ export class PapersController {
   @Get(':id/preview')
   preview(@Param('id') id: string) {
     return this.papersService.preview(id);
+  }
+
+  @Get(':id/attachment')
+  async downloadAttachment(@Param('id') id: string, @Res() res: Response) {
+    const file = await this.papersService.getAttachmentFile(id);
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeURIComponent(file.fileName)}"`,
+    );
+    if (file.size) {
+      res.setHeader('Content-Length', String(file.size));
+    }
+    file.stream.pipe(res);
+  }
+
+  @Delete(':id/attachment')
+  removeAttachment(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.papersService.removeAttachment(id, user.userId);
   }
 
   @Post(':id/publish')
@@ -118,12 +148,15 @@ export class PapersController {
   }
 
   @Put(':id')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(PaperAttachmentInterceptor)
   update(
     @Param('id') id: string,
     @Body() dto: UpdatePaperDto,
+    @UploadedFile() attachment: Express.Multer.File | undefined,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.papersService.update(id, dto, user.userId);
+    return this.papersService.update(id, dto, user.userId, attachment);
   }
 
   @Delete(':id')

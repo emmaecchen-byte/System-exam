@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ContentStatus, Prisma, Question } from '@prisma/client';
+import { createReadStream } from 'fs';
 import { PrismaService } from '../../prisma/prisma.module';
 import { AuditService } from '../../common/services/audit.service';
 import {
@@ -15,6 +16,11 @@ import {
   UpdatePaperDto,
   UpdatePaperQuestionScoreDto,
 } from './dto/paper.dto';
+import {
+  deletePaperAttachmentFile,
+  resolvePaperAttachmentAbsolutePath,
+  writePaperAttachment,
+} from './paper-attachment.util';
 
 const paperInclude = {
   category: { select: { id: true, name: true } },
@@ -130,7 +136,11 @@ export class PapersService {
     return versions.map((p) => this.toListItem(p));
   }
 
-  async create(dto: CreatePaperDto, createdById: string) {
+  async create(
+    dto: CreatePaperDto,
+    createdById: string,
+    attachment?: Express.Multer.File,
+  ) {
     const paper = await this.prisma.paper.create({
       data: {
         title: dto.title.trim(),
@@ -148,19 +158,28 @@ export class PapersService {
       data: { paperFamilyId: paper.id },
     });
 
+    if (attachment) {
+      await this.saveAttachment(paper.id, attachment, createdById);
+    }
+
     await this.auditService.log({
       actorId: createdById,
       action: 'CREATE',
       objectType: 'Paper',
       objectId: paper.id,
       objectName: paper.title,
-      afterData: { categoryId: dto.categoryId },
+      afterData: { categoryId: dto.categoryId, hasAttachment: Boolean(attachment) },
     });
 
     return this.findOne(paper.id);
   }
 
-  async update(id: string, dto: UpdatePaperDto, actorId?: string) {
+  async update(
+    id: string,
+    dto: UpdatePaperDto,
+    actorId?: string,
+    attachment?: Express.Multer.File,
+  ) {
     const paper = await this.getPaperOrThrow(id);
     this.assertEditable(paper);
 
@@ -172,15 +191,91 @@ export class PapersService {
       },
     });
 
+    if (attachment) {
+      await this.saveAttachment(id, attachment, actorId);
+    }
+
     await this.auditService.log({
       actorId,
       action: 'UPDATE',
       objectType: 'Paper',
       objectId: id,
-      afterData: dto,
+      afterData: { ...dto, attachmentUpdated: Boolean(attachment) },
     });
 
     return this.findOne(id);
+  }
+
+  async getAttachmentFile(id: string) {
+    const paper = await this.getPaperOrThrow(id);
+    if (!paper.attachmentFilePath || !paper.attachmentFileName) {
+      throw new NotFoundException('Paper attachment not found');
+    }
+    const absolutePath = resolvePaperAttachmentAbsolutePath(paper.attachmentFilePath);
+    return {
+      stream: createReadStream(absolutePath),
+      fileName: paper.attachmentFileName,
+      mimeType: paper.attachmentMimeType ?? 'application/octet-stream',
+      size: paper.attachmentFileSize ?? undefined,
+    };
+  }
+
+  async removeAttachment(id: string, actorId?: string) {
+    const paper = await this.getPaperOrThrow(id);
+    this.assertEditable(paper);
+    if (!paper.attachmentFilePath) {
+      throw new NotFoundException('Paper attachment not found');
+    }
+
+    await deletePaperAttachmentFile(paper.attachmentFilePath);
+    await this.prisma.paper.update({
+      where: { id },
+      data: {
+        attachmentFileName: null,
+        attachmentFilePath: null,
+        attachmentFileSize: null,
+        attachmentMimeType: null,
+        attachmentUploadedAt: null,
+        attachmentUploadedById: null,
+      },
+    });
+
+    await this.auditService.log({
+      actorId,
+      action: 'DELETE',
+      objectType: 'Paper',
+      objectId: id,
+      objectName: paper.title,
+      reason: 'Removed paper attachment',
+    });
+
+    return this.findOne(id);
+  }
+
+  private async saveAttachment(
+    paperId: string,
+    file: Express.Multer.File,
+    uploadedById?: string,
+  ) {
+    const paper = await this.getPaperOrThrow(paperId);
+    this.assertEditable(paper);
+
+    if (paper.attachmentFilePath) {
+      await deletePaperAttachmentFile(paper.attachmentFilePath);
+    }
+
+    const stored = await writePaperAttachment(paperId, file);
+    await this.prisma.paper.update({
+      where: { id: paperId },
+      data: {
+        attachmentFileName: file.originalname,
+        attachmentFilePath: stored.relativePath,
+        attachmentFileSize: file.size,
+        attachmentMimeType: file.mimetype,
+        attachmentUploadedAt: new Date(),
+        attachmentUploadedById: uploadedById ?? null,
+      },
+    });
   }
 
   async remove(id: string, actorId?: string) {
@@ -194,6 +289,7 @@ export class PapersService {
       throw new ConflictException('Paper is referenced by exams');
     }
 
+    await deletePaperAttachmentFile(paper.attachmentFilePath);
     await this.prisma.paper.delete({ where: { id } });
     await this.auditService.log({
       actorId,
@@ -381,6 +477,12 @@ export class PapersService {
         status: ContentStatus.DRAFT,
         paperFamilyId: familyId,
         sourceFileId: source.sourceFileId,
+        attachmentFileName: source.attachmentFileName,
+        attachmentFilePath: source.attachmentFilePath,
+        attachmentFileSize: source.attachmentFileSize,
+        attachmentMimeType: source.attachmentMimeType,
+        attachmentUploadedAt: source.attachmentUploadedAt,
+        attachmentUploadedById: source.attachmentUploadedById,
         createdById,
       },
     });
@@ -525,6 +627,15 @@ export class PapersService {
       questionCount: paper._count.paperQuestions,
       examCount: paper._count.exams,
       paperFamilyId: paper.paperFamilyId,
+      hasAttachment: Boolean(paper.attachmentFilePath),
+      attachment: paper.attachmentFileName
+        ? {
+            fileName: paper.attachmentFileName,
+            fileSize: paper.attachmentFileSize,
+            mimeType: paper.attachmentMimeType,
+            uploadedAt: paper.attachmentUploadedAt,
+          }
+        : null,
       updatedAt: paper.updatedAt,
       createdAt: paper.createdAt,
     };

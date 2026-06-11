@@ -21,6 +21,7 @@ import {
   updatePaperQuestionScore,
 } from '@/api/papers';
 import QuestionPickerDialog from '@/components/QuestionPickerDialog.vue';
+import PaperForm from '@/views/admin/PaperForm.vue';
 import { useLocalizedLabels } from '@/composables/useLocalizedLabels';
 import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 
@@ -254,6 +255,15 @@ onMounted(load);
           </el-form>
         </el-card>
 
+        <el-card v-if="paper" shadow="never" class="attachment-card">
+          <PaperForm
+            :paper-id="paperId"
+            :is-editable="paper.isEditable"
+            :attachment="paper.attachment"
+            @updated="(data) => (paper = data)"
+          />
+        </el-card>
+
         <el-card v-if="versions.length" shadow="never" :header="t('paperEdit.versionHistory')" class="versions-card">
           <el-timeline>
             <el-timeline-item
@@ -357,6 +367,9 @@ onMounted(load);
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+.attachment-card {
+  margin-bottom: 16px;
 }
 .versions-card {
   margin-top: 16px;

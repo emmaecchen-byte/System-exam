@@ -19,7 +19,12 @@ import {
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
-  findAll(search?: string, roleCode?: string, includeInactive = false) {
+  private buildUserWhere(
+    search?: string,
+    roleCode?: string,
+    departmentId?: string,
+    includeInactive = false,
+  ): Prisma.UserWhereInput {
     const where: Prisma.UserWhereInput = {};
     if (!includeInactive) {
       where.status = UserStatus.ACTIVE;
@@ -29,15 +34,53 @@ export class UsersService {
         { name: { contains: search.trim() } },
         { employeeNo: { contains: search.trim() } },
         { email: { contains: search.trim() } },
+        { phone: { contains: search.trim() } },
       ];
     }
     if (roleCode) {
       where.userRoles = { some: { role: { code: roleCode } } };
     }
+    if (departmentId) {
+      where.departmentId = departmentId;
+    }
+    return where;
+  }
+
+  async findAll(
+    search?: string,
+    roleCode?: string,
+    includeInactive = false,
+    page?: number,
+    pageSize?: number,
+    departmentId?: string,
+  ) {
+    const where = this.buildUserWhere(search, roleCode, departmentId, includeInactive);
+    const include = { department: true, userRoles: { include: { role: true } } };
+    const orderBy = { name: 'asc' as const };
+
+    if (page !== undefined) {
+      const p = Math.max(1, page);
+      const ps = Math.min(200, Math.max(1, pageSize ?? 20));
+      const [total, data] = await Promise.all([
+        this.prisma.user.count({ where }),
+        this.prisma.user.findMany({
+          where,
+          include,
+          orderBy,
+          skip: (p - 1) * ps,
+          take: ps,
+        }),
+      ]);
+      return {
+        data,
+        meta: { total, page: p, pageSize: ps, totalPages: Math.ceil(total / ps) || 1 },
+      };
+    }
+
     return this.prisma.user.findMany({
       where,
-      include: { department: true, userRoles: { include: { role: true } } },
-      orderBy: { name: 'asc' },
+      include,
+      orderBy,
       take: 100,
     });
   }
@@ -171,6 +214,48 @@ export class UsersService {
       data: { status: 'INACTIVE' },
     });
     return { success: true };
+  }
+
+  async resetUserPassword(id: string) {
+    await this.findOne(id);
+    const password = this.generateRandomPassword();
+    const passwordHash = await bcrypt.hash(password, 10);
+    await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash, status: UserStatus.ACTIVE },
+    });
+    return { password };
+  }
+
+  private generateRandomPassword(length = 12): string {
+    const chars = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$';
+    let password = '';
+    for (let i = 0; i < length; i += 1) {
+      password += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return password;
+  }
+
+  async getRolePermissions(roleId: string) {
+    const role = await this.prisma.role.findUnique({
+      where: { id: roleId },
+      include: {
+        rolePermissions: { include: { permission: true } },
+        _count: { select: { userRoles: true } },
+      },
+    });
+    if (!role) throw new NotFoundException('Role not found');
+    return {
+      role: {
+        id: role.id,
+        name: role.name,
+        code: role.code,
+        description: role.description,
+        userCount: role._count.userRoles,
+      },
+      permissions: role.rolePermissions.map((rp) => rp.permission),
+      permissionCodes: role.rolePermissions.map((rp) => rp.permission.code),
+    };
   }
 
   async listRoles() {

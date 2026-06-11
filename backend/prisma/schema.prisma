@@ -257,17 +257,23 @@ model Question {
 }
 
 model Paper {
-  id            String        @id @default(cuid())
-  categoryId    String        @map("category_id")
-  title         String
-  totalScore    Decimal       @default(0) @map("total_score")
-  version       Int           @default(1)
-  status        ContentStatus @default(DRAFT)
-  sourceFileId  String?       @map("source_file_id")
-  paperFamilyId String?       @map("paper_family_id")
-  createdById   String        @map("created_by")
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
+  id                     String        @id @default(cuid())
+  categoryId             String        @map("category_id")
+  title                  String
+  totalScore             Decimal       @default(0) @map("total_score")
+  version                Int           @default(1)
+  status                 ContentStatus @default(DRAFT)
+  sourceFileId           String?       @map("source_file_id")
+  paperFamilyId          String?       @map("paper_family_id")
+  attachmentFileName     String?       @map("attachment_file_name")
+  attachmentFilePath     String?       @map("attachment_file_path")
+  attachmentFileSize     Int?          @map("attachment_file_size")
+  attachmentMimeType     String?       @map("attachment_mime_type")
+  attachmentUploadedAt   DateTime?     @map("attachment_uploaded_at")
+  attachmentUploadedById String?       @map("attachment_uploaded_by")
+  createdById            String        @map("created_by")
+  createdAt              DateTime      @default(now()) @map("created_at")
+  updatedAt              DateTime      @updatedAt @map("updated_at")
 
   category       ExamCategory    @relation(fields: [categoryId], references: [id])
   sourceFile     Attachment?     @relation(fields: [sourceFileId], references: [id])
@@ -394,6 +400,8 @@ model ExamAttempt {
   assignedGraderId     String?       @map("assigned_grader_id")
   needsQualityReview   Boolean       @default(false) @map("needs_quality_review")
   resultsPublishedAt DateTime?     @map("results_published_at")
+  questionOrderJson  Json?         @map("question_order_json")
+  optionOrdersJson   Json?         @map("option_orders_json")
   createdAt            DateTime      @default(now()) @map("created_at")
   updatedAt            DateTime      @updatedAt @map("updated_at")
 

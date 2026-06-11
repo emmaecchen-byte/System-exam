@@ -22,6 +22,11 @@ export class RolesController {
     return this.usersService.listPermissions();
   }
 
+  @Get(':id/permissions')
+  getRolePermissions(@Param('id') id: string) {
+    return this.usersService.getRolePermissions(id);
+  }
+
   @Put(':id/permissions')
   updatePermissions(@Param('id') id: string, @Body() dto: UpdateRolePermissionsDto) {
     return this.usersService.updateRolePermissions(id, dto);

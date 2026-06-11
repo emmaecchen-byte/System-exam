@@ -8,9 +8,14 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../../common/services/audit.service';
 import { RequestAuditContext } from '../../common/utils/request-audit.util';
 import { PrismaService } from '../../prisma/prisma.module';
+import {
+  applyOptionKeyOrder,
+  buildAttemptDisplayOrder,
+} from '../../common/utils/shuffle.util';
 import { toCandidateQuestion } from '../questions/questions.service';
 import { ExamLifecycleService } from '../exams/exam-lifecycle.service';
 import { isWithinExamWindow } from '../exams/exam-lifecycle.util';
+import { TimerService } from '../timer/timer.service';
 import { AutoGradeService } from './auto-grade.service';
 import { BatchSaveAnswersDto, CandidateAuditEventDto, SaveAnswerDto } from './dto/student.dto';
 
@@ -114,6 +119,7 @@ export class StudentService {
     private autoGrade: AutoGradeService,
     private auditService: AuditService,
     private lifecycleService: ExamLifecycleService,
+    private timerService: TimerService,
   ) {}
 
   async listExams(userId: string) {
@@ -455,7 +461,23 @@ export class StudentService {
     const existing = await this.prisma.examAttempt.findFirst({
       where: { examId, userId, status: 'IN_PROGRESS' },
     });
-    if (existing) return existing;
+    if (existing) {
+      await this.timerService.ensureTimer({
+        attemptId: existing.id,
+        userId,
+        examId,
+        startedAt: existing.startedAt,
+        durationMinutes: exam.durationMinutes,
+        sessionEnd: endTime,
+      });
+      return existing;
+    }
+
+    const { questionOrderJson, optionOrdersJson } = buildAttemptDisplayOrder(
+      exam.paper.paperQuestions,
+      exam.randomQuestionOrder,
+      exam.randomOptionOrder,
+    );
 
     const attempt = await this.prisma.examAttempt.create({
       data: {
@@ -465,6 +487,8 @@ export class StudentService {
         startedAt: now,
         status: 'IN_PROGRESS',
         ip: ctx.ip,
+        questionOrderJson: questionOrderJson as Prisma.InputJsonValue,
+        optionOrdersJson: optionOrdersJson as Prisma.InputJsonValue,
       },
     });
 
@@ -487,6 +511,15 @@ export class StudentService {
       objectName: exam.title,
       afterData: { examId, sessionId: attempt.sessionId },
       ...ctx,
+    });
+
+    await this.timerService.startTimer({
+      attemptId: attempt.id,
+      userId,
+      examId,
+      startedAt: now,
+      durationMinutes: exam.durationMinutes,
+      sessionEnd: endTime,
     });
 
     return attempt;
@@ -521,38 +554,29 @@ export class StudentService {
     });
     const recordMap = new Map(records.map((r) => [r.questionId, r]));
 
-    const questions = exam.paper.paperQuestions.map((pq, index) => {
-      const snapshot = pq.questionSnapshotJson as {
-        type: string;
-        stem: string;
-        optionsJson: unknown;
-      };
-      const record = recordMap.get(pq.questionId);
-      const base = toCandidateQuestion({
-        id: pq.questionId,
-        type: snapshot.type,
-        stem: snapshot.stem,
-        optionsJson: snapshot.optionsJson,
-        score: pq.score,
-      });
-      const answerContent = record?.answerContentJson ?? null;
-      return {
-        ...base,
-        sortOrder: index,
-        answerContent,
-        markedForReview: record?.markedForReview ?? false,
-        answered: isAnswered(snapshot.type, answerContent),
-      };
-    });
+    const questions = this.buildShuffledCandidateQuestions(
+      exam.paper.paperQuestions,
+      recordMap,
+      attempt.questionOrderJson,
+      attempt.optionOrdersJson,
+    );
 
     const window = await this.getParticipantWindow(attempt.examId, userId);
-    let remainingSeconds = this.computeRemainingSeconds(attempt.startedAt, exam.durationMinutes);
+    let remainingSeconds = await this.timerService.getRemainingTime(attempt.id, {
+      startedAt: attempt.startedAt,
+      durationMinutes: exam.durationMinutes,
+      sessionEnd: window.endTime,
+    });
     if (window.endTime) {
       const sessionRemaining = Math.floor((window.endTime.getTime() - Date.now()) / 1000);
       remainingSeconds = Math.min(remainingSeconds, Math.max(0, sessionRemaining));
     }
 
-    const deadlineAt = this.computeDeadlineAt(attempt.startedAt, exam.durationMinutes, window.endTime);
+    const deadlineAt = this.timerService.computeDeadlineAt(
+      attempt.startedAt,
+      exam.durationMinutes,
+      window.endTime,
+    );
 
     return {
       id: attempt.id,
@@ -712,24 +736,6 @@ export class StudentService {
     return 'SCREEN_SWITCH';
   }
 
-  private computeRemainingSeconds(startedAt: Date, durationMinutes: number): number {
-    const elapsed = Math.floor((Date.now() - startedAt.getTime()) / 1000);
-    const total = durationMinutes * 60;
-    return Math.max(0, total - elapsed);
-  }
-
-  private computeDeadlineAt(
-    startedAt: Date,
-    durationMinutes: number,
-    sessionEnd?: Date | null,
-  ): Date {
-    const durationEnd = new Date(startedAt.getTime() + durationMinutes * 60 * 1000);
-    if (sessionEnd && sessionEnd < durationEnd) {
-      return sessionEnd;
-    }
-    return durationEnd;
-  }
-
   private async assertWithinExamTime(
     attempt: { id: string; examId: string; startedAt: Date; status: string },
     userId: string,
@@ -743,7 +749,7 @@ export class StudentService {
     if (!exam) throw new NotFoundException('Exam not found');
 
     const window = await this.getParticipantWindow(attempt.examId, userId);
-    const deadline = this.computeDeadlineAt(
+    const deadline = this.timerService.computeDeadlineAt(
       attempt.startedAt,
       exam.durationMinutes,
       window.endTime,
@@ -782,6 +788,8 @@ export class StudentService {
       isSubmit: true,
       submitType,
     });
+
+    await this.timerService.clearTimer(attemptId);
 
     const submittedAt = new Date();
     const durationSeconds = Math.floor((submittedAt.getTime() - attempt.startedAt.getTime()) / 1000);
@@ -945,6 +953,78 @@ export class StudentService {
       where: { examId, userId },
     });
     if (!participant) throw new ForbiddenException('Not assigned to this exam');
+  }
+
+  private buildShuffledCandidateQuestions(
+    paperQuestions: Array<{
+      questionId: string;
+      sortOrder: number;
+      score: unknown;
+      questionSnapshotJson: unknown;
+    }>,
+    recordMap: Map<
+      string,
+      {
+        answerContentJson: unknown;
+        markedForReview: boolean;
+      }
+    >,
+    questionOrderJson: unknown,
+    optionOrdersJson: unknown,
+  ) {
+    const pqById = new Map(paperQuestions.map((pq) => [pq.questionId, pq]));
+    const defaultOrder = [...paperQuestions]
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((pq) => pq.questionId);
+
+    let questionIds: string[];
+    if (Array.isArray(questionOrderJson) && questionOrderJson.length > 0) {
+      const stored = questionOrderJson as string[];
+      const storedSet = new Set(stored);
+      const missing = defaultOrder.filter((id) => !storedSet.has(id));
+      questionIds = [...stored.filter((id) => pqById.has(id)), ...missing];
+    } else {
+      questionIds = defaultOrder;
+    }
+
+    const optionOrders =
+      optionOrdersJson &&
+      typeof optionOrdersJson === 'object' &&
+      !Array.isArray(optionOrdersJson)
+        ? (optionOrdersJson as Record<string, string[]>)
+        : {};
+
+    return questionIds
+      .map((questionId, index) => {
+        const pq = pqById.get(questionId);
+        if (!pq) return null;
+        const snapshot = pq.questionSnapshotJson as {
+          type: string;
+          stem: string;
+          optionsJson: unknown;
+        };
+        const orderedOptions = applyOptionKeyOrder(
+          snapshot.optionsJson,
+          optionOrders[questionId],
+        );
+        const record = recordMap.get(questionId);
+        const base = toCandidateQuestion({
+          id: questionId,
+          type: snapshot.type,
+          stem: snapshot.stem,
+          optionsJson: orderedOptions,
+          score: pq.score,
+        });
+        const answerContent = record?.answerContentJson ?? null;
+        return {
+          ...base,
+          sortOrder: index,
+          answerContent,
+          markedForReview: record?.markedForReview ?? false,
+          answered: isAnswered(snapshot.type, answerContent),
+        };
+      })
+      .filter((q): q is NonNullable<typeof q> => q != null);
   }
 
   private async getOwnedAttempt(attemptId: string, userId: string) {

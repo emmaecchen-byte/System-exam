@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Plus } from '@element-plus/icons-vue';
+import { Plus, QuestionFilled } from '@element-plus/icons-vue';
 import { fetchCategoryOptions } from '@/api/categories';
 import {
   addSessionParticipants,
@@ -539,10 +539,26 @@ watch(
             <el-form-item v-if="form.allowRetake" :label="t('examEdit.maxAttempts')">
               <el-input-number v-model="form.maxAttempts" :min="2" :max="10" />
             </el-form-item>
-            <el-form-item :label="t('examEdit.randomQuestionOrder')">
+            <el-form-item>
+              <template #label>
+                <span class="inline-flex items-center gap-1">
+                  {{ t('examEdit.randomQuestionOrder') }}
+                  <el-tooltip :content="t('examEdit.randomOrderTooltip')" placement="top">
+                    <el-icon class="text-gray-400"><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
               <el-switch v-model="form.randomQuestionOrder" />
             </el-form-item>
-            <el-form-item :label="t('examEdit.randomOptionOrder')">
+            <el-form-item>
+              <template #label>
+                <span class="inline-flex items-center gap-1">
+                  {{ t('examEdit.randomOptionOrder') }}
+                  <el-tooltip :content="t('examEdit.randomOrderTooltip')" placement="top">
+                    <el-icon class="text-gray-400"><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
               <el-switch v-model="form.randomOptionOrder" />
             </el-form-item>
             <el-form-item>

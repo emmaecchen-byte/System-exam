@@ -4,6 +4,7 @@ import { ExamStatus, Prisma, UserStatus } from '@prisma/client';
 import * as QRCode from 'qrcode';
 import { PrismaService } from '../../prisma/prisma.module';
 import { AuditService } from '../../common/services/audit.service';
+import { QrTokenCacheService } from '../../common/services/qr-token-cache.service';
 import { QrTokenService } from '../../common/services/qr-token.service';
 import { resolveQrCodeStatus } from './qr-status.util';
 import { GenerateQrDto } from './dto/qr.dto';
@@ -20,6 +21,7 @@ export class SessionsService {
     private prisma: PrismaService,
     private auditService: AuditService,
     private qrTokenService: QrTokenService,
+    private qrTokenCache: QrTokenCacheService,
     private config: ConfigService,
   ) {}
 
@@ -256,6 +258,16 @@ export class SessionsService {
       },
     });
 
+    const ttlSeconds = Math.max(
+      1,
+      Math.floor((expiresAt.getTime() - createdAt.getTime()) / 1000),
+    );
+    await this.qrTokenCache.setToken(hash, {
+      sessionId,
+      expiresAt: expiresAt.toISOString(),
+      isValid: true,
+    }, ttlSeconds);
+
     await this.auditService.log({
       actorId,
       action: 'CREATE',
@@ -329,6 +341,14 @@ export class SessionsService {
       },
     });
 
+    if (session.qrTokenHash && session.qrExpiresAt) {
+      await this.qrTokenCache.markInvalid(session.qrTokenHash, {
+        sessionId,
+        expiresAt: session.qrExpiresAt.toISOString(),
+        isValid: false,
+      });
+    }
+
     await this.auditService.log({
       actorId,
       action: 'DELETE',
@@ -341,6 +361,11 @@ export class SessionsService {
 
   async revokeQrTokensForExam(examId: string) {
     const now = new Date();
+    const activeSessions = await this.prisma.examSession.findMany({
+      where: { examId, qrTokenHash: { not: null }, qrIsValid: true },
+      select: { id: true, qrTokenHash: true, qrExpiresAt: true },
+    });
+
     await this.prisma.examSession.updateMany({
       where: { examId, qrTokenHash: { not: null }, qrIsValid: true },
       data: {
@@ -348,6 +373,15 @@ export class SessionsService {
         qrInvalidatedAt: now,
       },
     });
+
+    for (const row of activeSessions) {
+      if (!row.qrTokenHash || !row.qrExpiresAt) continue;
+      await this.qrTokenCache.markInvalid(row.qrTokenHash, {
+        sessionId: row.id,
+        expiresAt: row.qrExpiresAt.toISOString(),
+        isValid: false,
+      });
+    }
   }
 
   /** Marks QR tokens expired when session end time or configured expiry has passed. */

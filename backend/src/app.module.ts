@@ -1,7 +1,13 @@
+import { BullModule } from '@nestjs/bull';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { redisConfig } from './config/redis.config';
+
+const redisEnabled = process.env.REDIS_ENABLED !== 'false';
 import { PrismaModule } from './prisma/prisma.module';
+import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { CategoriesModule } from './modules/categories/categories.module';
@@ -15,6 +21,8 @@ import { StudentModule } from './modules/student/student.module';
 import { QrEntryModule } from './modules/qr-entry/qr-entry.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { TimerModule } from './modules/timer/timer.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -22,6 +30,9 @@ import { AppController } from './app.controller';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
+    RedisModule,
+    ...(redisEnabled ? [BullModule.forRoot({ redis: redisConfig })] : []),
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -36,6 +47,8 @@ import { AppController } from './app.controller';
     QrEntryModule,
     TasksModule,
     AdminModule,
+    ReportsModule,
+    TimerModule,
   ],
 })
 export class AppModule {}

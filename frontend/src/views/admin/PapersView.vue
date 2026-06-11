@@ -6,7 +6,6 @@ import { AxiosError } from 'axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Search } from '@element-plus/icons-vue';
 import { fetchCategoryOptions } from '@/api/categories';
-import { useLocalizedLabels } from '@/composables/useLocalizedLabels';
 import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 import {
   archivePaper,
@@ -16,10 +15,10 @@ import {
   fetchPapers,
   PaperListItem,
 } from '@/api/papers';
+import PaperList from '@/views/admin/PaperList.vue';
 
 const { t } = useI18n();
-const { contentStatus } = useLocalizedLabels();
-const { categoryName, paperTitle } = useSeedDataLabels();
+const { categoryName } = useSeedDataLabels();
 const router = useRouter();
 const loading = ref(false);
 const list = ref<PaperListItem[]>([]);
@@ -46,12 +45,6 @@ const statusOptions = computed(() => [
   { label: t('status.published'), value: 'ACTIVE' },
   { label: t('status.archived'), value: 'ARCHIVED' },
 ]);
-
-function statusTagType(status: string) {
-  if (status === 'DRAFT') return 'info';
-  if (status === 'ACTIVE') return 'success';
-  return 'warning';
-}
 
 async function loadCategories() {
   const { data } = await fetchCategoryOptions();
@@ -174,10 +167,6 @@ async function unarchivePaperRow(row: PaperListItem) {
   }
 }
 
-function formatDate(v: string) {
-  return new Date(v).toLocaleString();
-}
-
 onMounted(async () => {
   await loadCategories();
   await loadList();
@@ -223,73 +212,19 @@ onMounted(async () => {
     </el-card>
 
     <el-card shadow="never">
-      <el-table v-loading="loading" :data="list" stripe>
-        <el-table-column :label="t('papers.colTitle')" min-width="200">
-          <template #default="{ row }">{{ paperTitle(row.id, row.title) }}</template>
-        </el-table-column>
-        <el-table-column :label="t('papers.colCategory')" width="160" show-overflow-tooltip>
-          <template #default="{ row }">{{ categoryName(row.category?.id, row.category?.name) }}</template>
-        </el-table-column>
-        <el-table-column prop="versionLabel" :label="t('papers.colVersion')" width="90" />
-        <el-table-column prop="totalScore" :label="t('papers.colTotalScore')" width="110" />
-        <el-table-column :label="t('papers.colQuestions')" width="100">
-          <template #default="{ row }">{{ row.questionCount }}</template>
-        </el-table-column>
-        <el-table-column :label="t('papers.colStatus')" width="110">
-          <template #default="{ row }">
-            <el-tag :type="statusTagType(row.status)" size="small">{{ contentStatus(row.status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column :label="t('papers.colLastModified')" width="170">
-          <template #default="{ row }">{{ formatDate(row.updatedAt) }}</template>
-        </el-table-column>
-        <el-table-column :label="t('papers.colActions')" width="140" fixed="right">
-          <template #default="{ row }">
-            <div class="action-buttons">
-              <el-button link type="primary" @click="editPaper(row)">{{ t('common.edit') }}</el-button>
-              <el-tooltip
-                v-if="deleteDisabledReason(row)"
-                :content="deleteDisabledReason(row)!"
-                placement="top"
-              >
-                <span class="action-disabled-wrap">
-                  <el-button link type="danger" disabled>{{ t('common.delete') }}</el-button>
-                </span>
-              </el-tooltip>
-              <el-button v-else link type="danger" @click="deletePaperRow(row)">{{ t('common.delete') }}</el-button>
-              <el-button
-                v-if="row.status === 'ACTIVE'"
-                link
-                type="warning"
-                @click="archivePaperRow(row)"
-              >
-                {{ t('common.archive') }}
-              </el-button>
-              <el-button
-                v-if="row.status === 'ARCHIVED'"
-                link
-                type="success"
-                @click="unarchivePaperRow(row)"
-              >
-                {{ t('common.unarchive') }}
-              </el-button>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <div class="pagination">
-        <el-pagination
-          v-model:current-page="pagination.page"
-          v-model:page-size="pagination.pageSize"
-          :total="pagination.total"
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next"
-          background
-          @current-change="(p: number) => { pagination.page = p; loadList(); }"
-          @size-change="(s: number) => { pagination.pageSize = s; pagination.page = 1; loadList(); }"
-        />
-      </div>
+      <PaperList
+        :loading="loading"
+        :list="list"
+        :total="pagination.total"
+        :page="pagination.page"
+        :page-size="pagination.pageSize"
+        @edit="editPaper"
+        @delete="deletePaperRow"
+        @archive="archivePaperRow"
+        @unarchive="unarchivePaperRow"
+        @page-change="(p) => { pagination.page = p; loadList(); }"
+        @size-change="(s) => { pagination.pageSize = s; pagination.page = 1; loadList(); }"
+      />
     </el-card>
 
     <el-dialog v-model="createVisible" :title="t('papers.createTitle')" width="480px">
@@ -332,19 +267,5 @@ onMounted(async () => {
 }
 .toolbar :deep(.el-card__body) {
   padding-bottom: 2px;
-}
-.pagination {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-.action-buttons {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-}
-.action-disabled-wrap {
-  display: inline-block;
 }
 </style>

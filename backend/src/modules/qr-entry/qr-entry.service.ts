@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.module';
+import { QrTokenCacheService } from '../../common/services/qr-token-cache.service';
 import { QrTokenService } from '../../common/services/qr-token.service';
 
 export type ExamEntryStatus =
@@ -44,6 +45,7 @@ export class QrEntryService {
   constructor(
     private prisma: PrismaService,
     private qrTokenService: QrTokenService,
+    private qrTokenCache: QrTokenCacheService,
   ) {}
 
   async resolveToken(token: string, userId?: string): Promise<ExamEntryResult> {
@@ -77,8 +79,10 @@ export class QrEntryService {
     }
 
     const hash = this.qrTokenService.hashToken(token.trim());
-    const session = await this.prisma.examSession.findFirst({
-      where: { qrTokenHash: hash },
+    const cached = await this.qrTokenCache.getToken(hash);
+
+    let session = await this.prisma.examSession.findFirst({
+      where: cached ? { id: cached.sessionId } : { qrTokenHash: hash },
       include: {
         exam: {
           select: {
@@ -103,6 +107,40 @@ export class QrEntryService {
     }
 
     const now = new Date();
+
+    if (cached && !cached.isValid) {
+      return {
+        status: 'invalidated',
+        message: 'This QR code has been invalidated.',
+        examTitle: session.exam.title,
+        sessionName: session.name,
+      };
+    }
+
+    if (cached && new Date(cached.expiresAt) < now) {
+      return {
+        status: 'expired',
+        message: 'This QR code has expired.',
+        examTitle: session.exam.title,
+        sessionName: session.name,
+      };
+    }
+
+    if (!cached && session.qrTokenHash && session.qrExpiresAt && session.qrIsValid) {
+      const ttlSeconds = Math.max(
+        1,
+        Math.floor((session.qrExpiresAt.getTime() - now.getTime()) / 1000),
+      );
+      await this.qrTokenCache.setToken(
+        session.qrTokenHash,
+        {
+          sessionId: session.id,
+          expiresAt: session.qrExpiresAt.toISOString(),
+          isValid: true,
+        },
+        ttlSeconds,
+      );
+    }
 
     if (session.qrInvalidatedAt) {
       return {

@@ -1,5 +1,12 @@
 import api from './client';
 
+export interface PaperAttachmentMeta {
+  fileName: string;
+  fileSize: number | null;
+  mimeType: string | null;
+  uploadedAt: string | null;
+}
+
 export interface PaperListItem {
   id: string;
   title: string;
@@ -13,6 +20,8 @@ export interface PaperListItem {
   questionCount: number;
   examCount: number;
   paperFamilyId: string | null;
+  hasAttachment: boolean;
+  attachment: PaperAttachmentMeta | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -63,12 +72,64 @@ export function fetchPaperVersions(id: string) {
   return api.get<PaperListItem[]>(`/admin/papers/${id}/versions`);
 }
 
-export function createPaper(data: { title: string; categoryId: string }) {
+export function createPaper(
+  data: { title: string; categoryId: string },
+  attachment?: File,
+) {
+  if (attachment) {
+    const form = new FormData();
+    form.append('title', data.title);
+    form.append('categoryId', data.categoryId);
+    form.append('attachment', attachment);
+    return api.post<PaperDetail>('/admin/papers', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  }
   return api.post<PaperDetail>('/admin/papers', data);
 }
 
-export function updatePaper(id: string, data: { title?: string; categoryId?: string }) {
+export function updatePaper(
+  id: string,
+  data: { title?: string; categoryId?: string },
+  attachment?: File,
+) {
+  if (attachment) {
+    const form = new FormData();
+    if (data.title !== undefined) form.append('title', data.title);
+    if (data.categoryId !== undefined) form.append('categoryId', data.categoryId);
+    form.append('attachment', attachment);
+    return api.put<PaperDetail>(`/admin/papers/${id}`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  }
   return api.put<PaperDetail>(`/admin/papers/${id}`, data);
+}
+
+export async function downloadPaperAttachment(paperId: string, fileName?: string) {
+  const response = await api.get(`/admin/papers/${paperId}/attachment`, {
+    responseType: 'blob',
+  });
+  const disposition = response.headers['content-disposition'] as string | undefined;
+  const match = disposition?.match(/filename="?([^"]+)"?/);
+  const name = fileName ?? match?.[1] ?? 'paper-attachment';
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = decodeURIComponent(name);
+  link.click();
+  window.URL.revokeObjectURL(url);
+}
+
+export function uploadPaperAttachment(paperId: string, file: File) {
+  const form = new FormData();
+  form.append('attachment', file);
+  return api.put<PaperDetail>(`/admin/papers/${paperId}`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+}
+
+export function deletePaperAttachment(paperId: string) {
+  return api.delete<PaperDetail>(`/admin/papers/${paperId}/attachment`);
 }
 
 export function deletePaper(id: string) {
