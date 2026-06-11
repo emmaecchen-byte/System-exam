@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -264,7 +263,7 @@ export class ExamsService {
   }
 
   async archive(id: string, actorId?: string) {
-    const exam = await this.getExamOrThrow(id);
+    await this.getExamOrThrow(id);
 
     const archived = await this.prisma.exam.update({
       where: { id },

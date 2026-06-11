@@ -4,10 +4,12 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useI18n } from 'vue-i18n';
 import api from '@/api/client';
+import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 
 const route = useRoute();
 const router = useRouter();
 const { t } = useI18n();
+const { examTitle } = useSeedDataLabels();
 const exam = ref<{ title: string; durationMinutes: number; passScore: number } | null>(null);
 const starting = ref(false);
 
@@ -34,7 +36,7 @@ async function start() {
 
 <template>
   <el-card v-if="exam">
-    <h2>{{ exam.title }}</h2>
+    <h2>{{ examTitle(route.params.examId as string, exam.title) }}</h2>
     <p>{{ t('student.durationLabel', { minutes: exam.durationMinutes }) }}</p>
     <p>{{ t('student.passingScoreLabel', { score: exam.passScore }) }}</p>
     <ul>

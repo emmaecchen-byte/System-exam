@@ -1,11 +1,9 @@
-import { Type } from 'class-transformer';
 import {
   IsBoolean,
   IsIn,
   IsNumber,
   IsOptional,
   IsString,
-  Max,
   Min,
 } from 'class-validator';
 

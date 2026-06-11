@@ -3,9 +3,13 @@ import { nextTick, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { TableInstance } from 'element-plus';
 import { fetchCategoryOptions } from '@/api/categories';
-import { fetchQuestions, QUESTION_TYPES, Question } from '@/api/questions';
+import { fetchQuestions, Question } from '@/api/questions';
+import { useLocalizedLabels } from '@/composables/useLocalizedLabels';
+import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 
 const { t } = useI18n();
+const { questionType, difficulty, questionTypeOptions } = useLocalizedLabels();
+const { categoryName } = useSeedDataLabels();
 
 const props = defineProps<{
   visible: boolean;
@@ -135,15 +139,15 @@ function close() {
           :placeholder="t('common.category')"
           @change="load"
         >
-          <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+          <el-option v-for="c in categories" :key="c.id" :label="categoryName(c.id, c.name)" :value="c.id" />
         </el-select>
       </el-form-item>
       <el-form-item>
         <el-select v-model="filters.type" clearable :placeholder="t('questions.colType')" @change="load">
           <el-option
-            v-for="qt in QUESTION_TYPES"
+            v-for="qt in questionTypeOptions()"
             :key="qt.value"
-            :label="t(`questions.types.${qt.value}`)"
+            :label="qt.label"
             :value="qt.value"
           />
         </el-select>
@@ -182,10 +186,14 @@ function close() {
       @selection-change="onSelectionChange"
     >
       <el-table-column type="selection" width="48" />
-      <el-table-column prop="typeLabel" :label="t('questions.colType')" width="120" />
+      <el-table-column :label="t('questions.colType')" width="120">
+        <template #default="{ row }">{{ questionType(row.type) }}</template>
+      </el-table-column>
       <el-table-column prop="stem" :label="t('questions.colStem')" show-overflow-tooltip />
       <el-table-column prop="score" :label="t('questionPicker.defaultPts')" width="90" />
-      <el-table-column prop="difficultyLabel" :label="t('questions.colDifficulty')" width="90" />
+      <el-table-column :label="t('questions.colDifficulty')" width="90">
+        <template #default="{ row }">{{ difficulty(row.difficulty) }}</template>
+      </el-table-column>
       <el-table-column :label="t('questionPicker.tags')" width="120" show-overflow-tooltip>
         <template #default="{ row }">{{ (row.tagsJson ?? []).join(', ') }}</template>
       </el-table-column>

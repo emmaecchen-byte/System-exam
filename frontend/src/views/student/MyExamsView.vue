@@ -3,6 +3,8 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import api from '@/api/client';
+import { useLocalizedLabels } from '@/composables/useLocalizedLabels';
+import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 
 type CandidateState =
   | 'UPCOMING'
@@ -37,6 +39,8 @@ interface CandidateExam {
 
 const router = useRouter();
 const { t } = useI18n();
+const { candidateStatusLabel, candidateActionLabel, passResult } = useLocalizedLabels();
+const { categoryName, examTitle } = useSeedDataLabels();
 const loading = ref(false);
 const activeTab = ref<'upcoming' | 'finished'>('upcoming');
 const exams = ref<CandidateExam[]>([]);
@@ -84,16 +88,12 @@ function statusTagType(row: CandidateExam): 'success' | 'warning' | 'info' | 'da
 
 function resultText(row: CandidateExam) {
   if (row.candidateState === 'GRADED_PUBLISHED' && row.result) {
-    const label = row.result.result === 'PASS'
-      ? t('student.pass')
-      : row.result.result === 'FAIL'
-        ? t('student.fail')
-        : row.result.result;
+    const label = passResult(row.result.result);
     return `${row.result.totalScore} / ${row.result.passScore} (${label})`;
   }
   if (row.candidateState === 'PENDING_GRADING') return t('student.pending');
-  if (row.candidateState === 'NOT_TAKEN') return '—';
-  return '—';
+  if (row.candidateState === 'NOT_TAKEN') return t('common.noDataDash');
+  return t('common.noDataDash');
 }
 
 function canClickAction(row: CandidateExam) {
@@ -141,8 +141,12 @@ function onAction(row: CandidateExam) {
       <el-tab-pane :label="`${t('student.upcoming')} (${upcomingList.length})`" name="upcoming">
         <el-empty v-if="!upcomingList.length" :description="t('student.noUpcoming')" />
         <el-table v-else :data="upcomingList" stripe class="exam-table">
-          <el-table-column prop="title" :label="t('student.colExam')" min-width="160" />
-          <el-table-column :label="t('student.colCategory')" width="140" prop="category" show-overflow-tooltip />
+          <el-table-column :label="t('student.colExam')" min-width="160">
+            <template #default="{ row }">{{ examTitle(row.examId, row.title) }}</template>
+          </el-table-column>
+          <el-table-column :label="t('student.colCategory')" width="140" show-overflow-tooltip>
+            <template #default="{ row }">{{ categoryName(undefined, row.category) }}</template>
+          </el-table-column>
           <el-table-column :label="t('student.colSchedule')" min-width="200">
             <template #default="{ row }">{{ formatRange(row.startTime, row.endTime) }}</template>
           </el-table-column>
@@ -151,7 +155,7 @@ function onAction(row: CandidateExam) {
           </el-table-column>
           <el-table-column :label="t('student.colStatus')" width="130">
             <template #default="{ row }">
-              <el-tag size="small" :type="statusTagType(row)">{{ row.statusLabel }}</el-tag>
+              <el-tag size="small" :type="statusTagType(row)">{{ candidateStatusLabel(row.candidateState, row.statusLabel) }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column :label="t('student.colResult')" width="90">
@@ -165,9 +169,9 @@ function onAction(row: CandidateExam) {
                 link
                 @click="onAction(row)"
               >
-                {{ row.actionLabel }}
+                {{ candidateActionLabel(row.actionLabel) }}
               </el-button>
-              <span v-else class="muted">{{ row.actionLabel }}</span>
+              <span v-else class="muted">{{ candidateActionLabel(row.actionLabel) }}</span>
             </template>
           </el-table-column>
         </el-table>
@@ -176,8 +180,12 @@ function onAction(row: CandidateExam) {
       <el-tab-pane :label="`${t('student.finished')} (${finishedList.length})`" name="finished">
         <el-empty v-if="!finishedList.length" :description="t('student.noFinished')" />
         <el-table v-else :data="finishedList" stripe class="exam-table">
-          <el-table-column prop="title" :label="t('student.colExam')" min-width="160" />
-          <el-table-column :label="t('student.colCategory')" width="140" prop="category" show-overflow-tooltip />
+          <el-table-column :label="t('student.colExam')" min-width="160">
+            <template #default="{ row }">{{ examTitle(row.examId, row.title) }}</template>
+          </el-table-column>
+          <el-table-column :label="t('student.colCategory')" width="140" show-overflow-tooltip>
+            <template #default="{ row }">{{ categoryName(undefined, row.category) }}</template>
+          </el-table-column>
           <el-table-column :label="t('student.colSubmitted')" width="170">
             <template #default="{ row }">
               {{ row.submittedAt ? new Date(row.submittedAt).toLocaleString() : '—' }}
@@ -185,7 +193,7 @@ function onAction(row: CandidateExam) {
           </el-table-column>
           <el-table-column :label="t('student.colStatus')" width="150">
             <template #default="{ row }">
-              <el-tag size="small" :type="statusTagType(row)">{{ row.statusLabel }}</el-tag>
+              <el-tag size="small" :type="statusTagType(row)">{{ candidateStatusLabel(row.candidateState, row.statusLabel) }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column :label="t('student.colResult')" width="140">
@@ -202,9 +210,9 @@ function onAction(row: CandidateExam) {
                 link
                 @click="onAction(row)"
               >
-                {{ row.actionLabel }}
+                {{ candidateActionLabel(row.actionLabel) }}
               </el-button>
-              <span v-else class="muted">{{ row.actionLabel }}</span>
+              <span v-else class="muted">{{ candidateActionLabel(row.actionLabel) }}</span>
             </template>
           </el-table-column>
         </el-table>

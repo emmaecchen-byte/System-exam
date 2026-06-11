@@ -58,7 +58,11 @@ async function logout() {
     </el-aside>
     <el-container>
       <el-header class="header">
-        <LayoutHeaderActions :user-name="auth.user?.name" @logout="logout" />
+        <LayoutHeaderActions
+          :user-name="auth.user?.name"
+          :employee-no="auth.user?.employeeNo"
+          @logout="logout"
+        />
       </el-header>
       <el-main>
         <router-view />

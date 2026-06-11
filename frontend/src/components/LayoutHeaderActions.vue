@@ -1,10 +1,18 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import LanguageSwitcher from './LanguageSwitcher.vue';
+import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 
-defineProps<{
+const props = defineProps<{
   userName?: string | null;
+  employeeNo?: string | null;
 }>();
+
+const { personName } = useSeedDataLabels();
+const displayName = computed(() =>
+  personName({ employeeNo: props.employeeNo, name: props.userName }),
+);
 
 const emit = defineEmits<{
   logout: [];
@@ -15,7 +23,7 @@ const { t } = useI18n();
 
 <template>
   <div class="header-actions">
-    <span v-if="userName" class="user-name">{{ userName }}</span>
+    <span v-if="userName" class="user-name">{{ displayName }}</span>
     <LanguageSwitcher />
     <el-button link type="primary" @click="emit('logout')">{{ t('common.logout') }}</el-button>
   </div>

@@ -15,8 +15,12 @@ import {
 } from '@/api/results';
 import { useAuthStore } from '@/stores/auth';
 import { ROLES } from '@/constants/roles';
+import { useLocalizedLabels } from '@/composables/useLocalizedLabels';
+import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 
 const { t } = useI18n();
+const { passResult, gradingStatusFromAttempt, questionType } = useLocalizedLabels();
+const { categoryName, departmentName, examTitle, personName } = useSeedDataLabels();
 
 const auth = useAuthStore();
 const route = useRoute();
@@ -104,9 +108,9 @@ function resultTagType(code: string) {
   return 'warning';
 }
 
-function gradingTagType(status: string) {
-  if (status === 'Completed') return 'success';
-  if (status === 'In Progress') return 'warning';
+function gradingTagType(attemptStatus: string) {
+  if (attemptStatus === 'COMPLETED') return 'success';
+  if (attemptStatus === 'GRADING') return 'warning';
   return 'info';
 }
 
@@ -366,7 +370,7 @@ onMounted(async () => {
             style="width: 200px"
             @change="onExamChange"
           >
-            <el-option v-for="e in filterOptions.exams" :key="e.id" :label="e.title" :value="e.id" />
+            <el-option v-for="e in filterOptions.exams" :key="e.id" :label="examTitle(e.id, e.title)" :value="e.id" />
           </el-select>
         </el-form-item>
         <el-form-item :label="t('results.colSession')">
@@ -401,7 +405,7 @@ onMounted(async () => {
             <el-option
               v-for="d in filterOptions.departments"
               :key="d.id"
-              :label="d.name"
+              :label="departmentName(d.id, d.name)"
               :value="d.id"
             />
           </el-select>
@@ -463,12 +467,18 @@ onMounted(async () => {
         sortable="custom"
       >
         <template #default="{ row }">
-          <el-link type="primary" @click="openDetail(row)">{{ row.candidateName }}</el-link>
+          <el-link type="primary" @click="openDetail(row)">
+            {{ personName({ employeeNo: row.employeeNo, name: row.candidateName }) }}
+          </el-link>
         </template>
       </el-table-column>
       <el-table-column prop="employeeNo" :label="t('results.colEmployeeNo')" width="120" />
-      <el-table-column prop="department" :label="t('results.colDepartment')" width="130" />
-      <el-table-column prop="examTitle" :label="t('results.colExamTitle')" min-width="160" />
+      <el-table-column :label="t('results.colDepartment')" width="130">
+        <template #default="{ row }">{{ departmentName(undefined, row.department) }}</template>
+      </el-table-column>
+      <el-table-column :label="t('results.colExamTitle')" min-width="160">
+        <template #default="{ row }">{{ examTitle(undefined, row.examTitle) }}</template>
+      </el-table-column>
       <el-table-column prop="sessionName" :label="t('results.colSession')" width="140" />
       <el-table-column :label="t('results.colStartTime')" width="170">
         <template #default="{ row }">{{ formatDate(row.startTime) }}</template>
@@ -503,13 +513,13 @@ onMounted(async () => {
       <el-table-column prop="passingScore" :label="t('results.colPassing')" width="90" align="right" />
       <el-table-column :label="t('results.colResult')" width="90">
         <template #default="{ row }">
-          <el-tag :type="resultTagType(row.resultCode)" size="small">{{ row.result }}</el-tag>
+          <el-tag :type="resultTagType(row.resultCode)" size="small">{{ passResult(row.resultCode) }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column :label="t('results.colGradingStatus')" width="120">
         <template #default="{ row }">
-          <el-tag :type="gradingTagType(row.gradingStatus)" size="small">
-            {{ row.gradingStatus }}
+          <el-tag :type="gradingTagType(row.attemptStatus)" size="small">
+            {{ gradingStatusFromAttempt(row.attemptStatus) }}
           </el-tag>
         </template>
       </el-table-column>
@@ -550,11 +560,19 @@ onMounted(async () => {
       <div v-loading="detailLoading">
         <template v-if="detail">
           <el-descriptions :column="2" border class="detail-summary">
-            <el-descriptions-item :label="t('results.colCandidate')">{{ detail.candidateName }}</el-descriptions-item>
+            <el-descriptions-item :label="t('results.colCandidate')">
+              {{ personName({ employeeNo: detail.employeeNo, name: detail.candidateName }) }}
+            </el-descriptions-item>
             <el-descriptions-item :label="t('results.colEmployeeNo')">{{ detail.employeeNo }}</el-descriptions-item>
-            <el-descriptions-item :label="t('results.colDepartment')">{{ detail.department }}</el-descriptions-item>
-            <el-descriptions-item :label="t('results.colExam')">{{ detail.examTitle }}</el-descriptions-item>
-            <el-descriptions-item :label="t('common.category')">{{ detail.examCategory }}</el-descriptions-item>
+            <el-descriptions-item :label="t('results.colDepartment')">
+              {{ departmentName(undefined, detail.department) }}
+            </el-descriptions-item>
+            <el-descriptions-item :label="t('results.colExam')">
+              {{ examTitle(undefined, detail.examTitle) }}
+            </el-descriptions-item>
+            <el-descriptions-item :label="t('common.category')">
+              {{ categoryName(undefined, detail.examCategory) }}
+            </el-descriptions-item>
             <el-descriptions-item :label="t('results.colSession')">{{ detail.sessionName || '—' }}</el-descriptions-item>
             <el-descriptions-item :label="t('common.submitted')">
               {{ formatDate(detail.submissionTime) }}
@@ -573,7 +591,7 @@ onMounted(async () => {
               }}
             </el-descriptions-item>
             <el-descriptions-item :label="t('results.colResult')">
-              <el-tag :type="resultTagType(detail.resultCode)" size="small">{{ detail.result }}</el-tag>
+              <el-tag :type="resultTagType(detail.resultCode)" size="small">{{ passResult(detail.resultCode) }}</el-tag>
             </el-descriptions-item>
             <el-descriptions-item :label="t('results.colGraders')" :span="2">
               {{ detail.graderNames || '—' }}
@@ -630,7 +648,7 @@ onMounted(async () => {
             <el-collapse-item
               v-for="q in detail.questions"
               :key="q.answerId"
-              :title="t('results.questionDetails', { number: q.questionNumber, type: q.type })"
+              :title="t('results.questionDetails', { number: q.questionNumber, type: questionType(q.type) })"
               :name="q.answerId"
             >
               <el-descriptions :column="1" border size="small">

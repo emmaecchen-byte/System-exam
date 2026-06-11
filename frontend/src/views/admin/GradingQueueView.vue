@@ -6,11 +6,13 @@ import { useI18n } from 'vue-i18n';
 import { fetchGradingQueue, fetchGradingStats, GradingQueueItem } from '@/api/grading';
 import { useAuthStore } from '@/stores/auth';
 import { ROLES } from '@/constants/roles';
+import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const { t } = useI18n();
+const { examTitle, personName } = useSeedDataLabels();
 const isAdmin = () =>
   auth.user?.roles.includes(ROLES.SUPER_ADMIN) || auth.user?.roles.includes(ROLES.ADMIN);
 
@@ -146,9 +148,15 @@ onMounted(() => {
           class="queue-table"
           @row-click="(row: GradingQueueItem) => openAttempt(row)"
         >
-          <el-table-column prop="candidateName" :label="t('grading.colCandidate')" min-width="140" />
+          <el-table-column :label="t('grading.colCandidate')" min-width="140">
+            <template #default="{ row }">
+              {{ personName({ employeeNo: row.candidateEmployeeNo, name: row.candidateName }) }}
+            </template>
+          </el-table-column>
           <el-table-column prop="candidateEmployeeNo" :label="t('grading.colEmployeeNo')" width="120" />
-          <el-table-column prop="examTitle" :label="t('grading.colExam')" min-width="180" />
+          <el-table-column :label="t('grading.colExam')" min-width="180">
+            <template #default="{ row }">{{ examTitle(undefined, row.examTitle) }}</template>
+          </el-table-column>
           <el-table-column prop="sessionName" :label="t('grading.colSession')" width="160">
             <template #default="{ row }">{{ row.sessionName ?? '—' }}</template>
           </el-table-column>
@@ -194,9 +202,15 @@ onMounted(() => {
           class="queue-table"
           @row-click="openAttempt"
         >
-          <el-table-column prop="candidateName" :label="t('grading.colCandidate')" min-width="140" />
+          <el-table-column :label="t('grading.colCandidate')" min-width="140">
+            <template #default="{ row }">
+              {{ personName({ employeeNo: row.candidateEmployeeNo, name: row.candidateName }) }}
+            </template>
+          </el-table-column>
           <el-table-column prop="candidateEmployeeNo" :label="t('grading.colEmployeeNo')" width="120" />
-          <el-table-column prop="examTitle" :label="t('grading.colExam')" min-width="180" />
+          <el-table-column :label="t('grading.colExam')" min-width="180">
+            <template #default="{ row }">{{ examTitle(undefined, row.examTitle) }}</template>
+          </el-table-column>
           <el-table-column prop="sessionName" :label="t('grading.colSession')" width="160">
             <template #default="{ row }">{{ row.sessionName ?? '—' }}</template>
           </el-table-column>

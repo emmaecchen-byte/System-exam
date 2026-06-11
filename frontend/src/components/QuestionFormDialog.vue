@@ -13,8 +13,10 @@ import {
   QuestionType,
   updateQuestion,
 } from '@/api/questions';
+import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 
 const { t } = useI18n();
+const { categoryName } = useSeedDataLabels();
 
 const props = defineProps<{
   visible: boolean;
@@ -309,7 +311,7 @@ function close() {
           :placeholder="t('questionForm.selectCategory')"
           style="width: 100%"
         >
-          <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+          <el-option v-for="c in categories" :key="c.id" :label="categoryName(c.id, c.name)" :value="c.id" />
         </el-select>
       </el-form-item>
 

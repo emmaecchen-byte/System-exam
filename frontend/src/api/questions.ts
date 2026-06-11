@@ -71,6 +71,9 @@ export interface ImportValidateResult {
   duplicateWarnings: number;
   detectedFormat?: string;
   defaultCategoryName?: string;
+  answerKeyDetected?: boolean;
+  answerKeyVoided?: boolean;
+  importWarnings?: string[];
   preview: Array<{
     row: number;
     valid: boolean;

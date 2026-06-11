@@ -20,7 +20,7 @@ import {
   assignOptionKeys,
   buildTrueFalseOptions,
   labelToDifficulty,
-  validateQuestionData,
+  validateQuestionImportData,
 } from './question.validator';
 
 export interface ImportRowError {
@@ -47,6 +47,7 @@ export interface ParsedImportRow {
     scoringRubric?: string;
     difficulty: number;
     tagsJson: string[];
+    status?: ContentStatus;
   };
 }
 
@@ -162,6 +163,9 @@ export class QuestionImportService {
             ? 'Word document (.docx) — same layout as PDF (sections, Question N, options, Correct Answer)'
             : [...new Set(layout.map((l) => layoutFormatLabel(l.format)))].join(' · '),
       defaultCategoryName,
+      answerKeyDetected: parsed.answerKeyDetected ?? false,
+      answerKeyVoided: parsed.answerKeyVoided ?? false,
+      importWarnings: parsed.importWarnings ?? [],
       preview,
       errors: rows.filter((r) => !r.valid).flatMap((r) =>
         r.errors.map((message) => ({ row: r.row, message })),
@@ -214,7 +218,7 @@ export class QuestionImportService {
             scoringRubric: row.data.scoringRubric,
             difficulty: row.data.difficulty,
             tagsJson: row.data.tagsJson,
-            status: ContentStatus.ACTIVE,
+            status: row.data.status ?? ContentStatus.ACTIVE,
           },
           createdById,
           false,
@@ -279,7 +283,7 @@ export class QuestionImportService {
   }
 
   private async extractPdfText(buffer: Buffer): Promise<string> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+     
     const { PDFParse } = require('pdf-parse') as {
       PDFParse: new (opts: { data: Buffer }) => {
         getText: () => Promise<{ text: string }>;
@@ -305,7 +309,13 @@ export class QuestionImportService {
       return this.parseExamDocument(buffer, filename);
     }
     const workbook = await this.parseWorkbook(buffer);
-    return { ...workbook, sourceFormat: 'excel' as const };
+    return {
+      ...workbook,
+      sourceFormat: 'excel' as const,
+      answerKeyDetected: false,
+      answerKeyVoided: false,
+      importWarnings: [] as string[],
+    };
   }
 
   private async parseExamDocument(buffer: Buffer, filename?: string) {
@@ -323,20 +333,39 @@ export class QuestionImportService {
       );
     }
 
-    const fieldSets = parsePdfExamText(text);
-    if (!fieldSets.length) {
+    const parsed = parsePdfExamText(text);
+    if (!parsed.rows.length) {
       throw new BadRequestException(
         `No questions found in ${label}. Supported layouts: English sections like "Section 1: Single Choice Questions" ` +
           'with "Question 1: …", "- A) …", and "Correct Answer: B"; or Chinese papers with sections like ' +
-          '"一、选择题", numbered questions, "A. …" options, and a "参考答案" answer key.',
+          '"一、选择题", numbered questions, and "A. …" options. Bundled answer-key sections (e.g. "参考答案") ' +
+          'are detected automatically and excluded from import.',
+      );
+    }
+
+    const importWarnings: string[] = [];
+    if (parsed.answerKeyVoided) {
+      importWarnings.push(
+        parsed.answerKeyLayout === 'chinese_reference_section'
+          ? 'Detected bundled answer key (参考答案). Questions were imported without correct answers — add answers manually in the question bank.'
+          : 'Detected bundled answer key section. Questions were imported without correct answers — add answers manually in the question bank.',
       );
     }
 
     const built = await this.buildParsedRows(
-      fieldSets.map((f) => ({ row: f.row, fields: f.fields })),
+      parsed.rows.map((f) => ({ row: f.row, fields: f.fields })),
       [],
+      undefined,
+      undefined,
+      { omitAnswers: parsed.answerKeyVoided, importAsDraft: parsed.answerKeyVoided },
     );
-    return { ...built, sourceFormat: isWord ? ('word' as const) : ('pdf' as const) };
+    return {
+      ...built,
+      sourceFormat: isWord ? ('word' as const) : ('pdf' as const),
+      answerKeyDetected: parsed.answerKeyDetected,
+      answerKeyVoided: parsed.answerKeyVoided,
+      importWarnings,
+    };
   }
 
   private async parseWorkbook(buffer: Buffer) {
@@ -396,6 +425,7 @@ export class QuestionImportService {
     layouts: ImportColumnLayout[],
     categoryMap?: Map<string, { id: string; name: string }>,
     defaultCategory?: { id: string; name: string },
+    importOptions?: { omitAnswers?: boolean; importAsDraft?: boolean },
   ) {
     let categories = categoryMap;
     let fallbackCategory = defaultCategory;
@@ -455,19 +485,30 @@ export class QuestionImportService {
 
       if (type && errors.length === 0) {
         try {
-          const built = this.buildAnswerPayload(type, fields.optionsRaw, fields.answerRaw);
-          optionsJson = built.optionsJson;
-          standardAnswerJson = built.standardAnswerJson;
-          scoringRubric = scoringRubric ?? built.scoringRubric;
+          const omitAnswers = importOptions?.omitAnswers ?? false;
+          if (omitAnswers) {
+            const built = this.buildQuestionStructureWithoutAnswers(type, fields.optionsRaw);
+            optionsJson = built.optionsJson;
+            standardAnswerJson = built.standardAnswerJson;
+            scoringRubric = undefined;
+          } else {
+            const built = this.buildAnswerPayload(type, fields.optionsRaw, fields.answerRaw);
+            optionsJson = built.optionsJson;
+            standardAnswerJson = built.standardAnswerJson;
+            scoringRubric = scoringRubric ?? built.scoringRubric;
+          }
 
-          validateQuestionData({
-            type,
-            stem: fields.stem,
-            optionsJson,
-            standardAnswerJson,
-            score,
-            scoringRubric,
-          });
+          validateQuestionImportData(
+            {
+              type,
+              stem: fields.stem,
+              optionsJson,
+              standardAnswerJson,
+              score,
+              scoringRubric,
+            },
+            { omitAnswers },
+          );
         } catch (e) {
           errors.push(e instanceof Error ? e.message : 'Validation failed');
         }
@@ -508,6 +549,7 @@ export class QuestionImportService {
                 scoringRubric,
                 difficulty: labelToDifficulty(fields.difficultyRaw),
                 tagsJson,
+                status: importOptions?.importAsDraft ? ContentStatus.DRAFT : ContentStatus.ACTIVE,
               }
             : undefined,
       });
@@ -518,6 +560,25 @@ export class QuestionImportService {
       layout: layouts,
       defaultCategoryName: fallbackCategory.name,
     };
+  }
+
+  private buildQuestionStructureWithoutAnswers(type: QuestionType, optionsRaw: string) {
+    if (type === QuestionType.TRUE_FALSE) {
+      return {
+        optionsJson: buildTrueFalseOptions(),
+        standardAnswerJson: {},
+      };
+    }
+
+    if (type === QuestionType.SINGLE_CHOICE || type === QuestionType.MULTIPLE_CHOICE) {
+      const labels = this.splitOptions(optionsRaw);
+      return {
+        optionsJson: assignOptionKeys(labels),
+        standardAnswerJson: {},
+      };
+    }
+
+    return { standardAnswerJson: {} };
   }
 
   private buildAnswerPayload(type: QuestionType, optionsRaw: string, answerRaw: string) {

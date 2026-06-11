@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
+import { i18n } from '@/i18n';
 import { ElConfigProvider } from 'element-plus';
 import en from 'element-plus/es/locale/lang/en';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
@@ -8,8 +10,22 @@ import { useAuthStore } from '@/stores/auth';
 import { useSessionTimeout } from '@/composables/useSessionTimeout';
 
 const auth = useAuthStore();
+const route = useRoute();
 const { locale } = useI18n();
 useSessionTimeout();
+
+function refreshDocumentTitle() {
+  for (let i = route.matched.length - 1; i >= 0; i--) {
+    const titleKey = route.matched[i].meta.titleKey as string | undefined;
+    if (titleKey) {
+      document.title = `${i18n.global.t(titleKey)} · ${i18n.global.t('app.name')}`;
+      return;
+    }
+  }
+}
+
+watch(locale, refreshDocumentTitle);
+watch(() => route.fullPath, refreshDocumentTitle);
 
 const elementLocale = computed(() => (locale.value === 'zh' ? zhCn : en));
 

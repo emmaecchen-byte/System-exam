@@ -6,6 +6,8 @@ import { AxiosError } from 'axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Search } from '@element-plus/icons-vue';
 import { fetchCategoryOptions } from '@/api/categories';
+import { useLocalizedLabels } from '@/composables/useLocalizedLabels';
+import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 import {
   archivePaper,
   unarchivePaper,
@@ -16,6 +18,8 @@ import {
 } from '@/api/papers';
 
 const { t } = useI18n();
+const { contentStatus } = useLocalizedLabels();
+const { categoryName, paperTitle } = useSeedDataLabels();
 const router = useRouter();
 const loading = ref(false);
 const list = ref<PaperListItem[]>([]);
@@ -204,7 +208,7 @@ onMounted(async () => {
         </el-form-item>
         <el-form-item :label="t('common.category')">
           <el-select v-model="filters.categoryId" clearable :placeholder="t('common.all')" style="width: 180px" @change="onSearch">
-            <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+            <el-option v-for="c in categories" :key="c.id" :label="categoryName(c.id, c.name)" :value="c.id" />
           </el-select>
         </el-form-item>
         <el-form-item :label="t('common.status')">
@@ -220,9 +224,11 @@ onMounted(async () => {
 
     <el-card shadow="never">
       <el-table v-loading="loading" :data="list" stripe>
-        <el-table-column prop="title" :label="t('papers.colTitle')" min-width="200" />
+        <el-table-column :label="t('papers.colTitle')" min-width="200">
+          <template #default="{ row }">{{ paperTitle(row.id, row.title) }}</template>
+        </el-table-column>
         <el-table-column :label="t('papers.colCategory')" width="160" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.category?.name }}</template>
+          <template #default="{ row }">{{ categoryName(row.category?.id, row.category?.name) }}</template>
         </el-table-column>
         <el-table-column prop="versionLabel" :label="t('papers.colVersion')" width="90" />
         <el-table-column prop="totalScore" :label="t('papers.colTotalScore')" width="110" />
@@ -231,7 +237,7 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column :label="t('papers.colStatus')" width="110">
           <template #default="{ row }">
-            <el-tag :type="statusTagType(row.status)" size="small">{{ row.statusLabel }}</el-tag>
+            <el-tag :type="statusTagType(row.status)" size="small">{{ contentStatus(row.status) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column :label="t('papers.colLastModified')" width="170">
@@ -293,7 +299,7 @@ onMounted(async () => {
         </el-form-item>
         <el-form-item :label="t('common.category')" required>
           <el-select v-model="createForm.categoryId" filterable style="width: 100%">
-            <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+            <el-option v-for="c in categories" :key="c.id" :label="categoryName(c.id, c.name)" :value="c.id" />
           </el-select>
         </el-form-item>
       </el-form>

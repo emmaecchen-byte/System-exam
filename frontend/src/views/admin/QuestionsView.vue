@@ -8,13 +8,17 @@ import { fetchCategoryOptions } from '@/api/categories';
 import {
   deleteQuestion,
   fetchQuestions,
-  QUESTION_TYPES,
   Question,
 } from '@/api/questions';
 import QuestionFormDialog from '@/components/QuestionFormDialog.vue';
 import QuestionImportDialog from '@/components/QuestionImportDialog.vue';
+import { useLocalizedLabels } from '@/composables/useLocalizedLabels';
+import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 
 const { t } = useI18n();
+const { questionType, difficulty, questionTypeOptions } = useLocalizedLabels();
+const { categoryName } = useSeedDataLabels();
+const localizedQuestionTypes = computed(() => questionTypeOptions());
 const loading = ref(false);
 const selectingAll = ref(false);
 const deleting = ref(false);
@@ -299,12 +303,12 @@ onMounted(async () => {
         </el-form-item>
         <el-form-item :label="t('common.category')">
           <el-select v-model="filters.categoryId" clearable :placeholder="t('common.all')" style="width: 180px" @change="onSearch">
-            <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+            <el-option v-for="c in categories" :key="c.id" :label="categoryName(c.id, c.name)" :value="c.id" />
           </el-select>
         </el-form-item>
         <el-form-item :label="t('questions.colType')">
           <el-select v-model="filters.type" clearable :placeholder="t('common.all')" style="width: 160px" @change="onSearch">
-            <el-option v-for="typeOpt in QUESTION_TYPES" :key="typeOpt.value" :label="typeOpt.label" :value="typeOpt.value" />
+            <el-option v-for="typeOpt in localizedQuestionTypes" :key="typeOpt.value" :label="typeOpt.label" :value="typeOpt.value" />
           </el-select>
         </el-form-item>
         <el-form-item :label="t('common.status')">
@@ -333,13 +337,17 @@ onMounted(async () => {
         @selection-change="onSelectionChange"
       >
         <el-table-column type="selection" width="48" reserve-selection />
-        <el-table-column prop="typeLabel" :label="t('questions.colType')" width="130" />
+        <el-table-column :label="t('questions.colType')" width="130">
+          <template #default="{ row }">{{ questionType(row.type) }}</template>
+        </el-table-column>
         <el-table-column prop="stem" :label="t('questions.colStem')" min-width="280" show-overflow-tooltip />
         <el-table-column :label="t('questions.colCategory')" width="160" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.category?.name }}</template>
+          <template #default="{ row }">{{ categoryName(row.category?.id, row.category?.name) }}</template>
         </el-table-column>
         <el-table-column prop="score" :label="t('questions.colPoints')" width="70" />
-        <el-table-column prop="difficultyLabel" :label="t('questions.colDifficulty')" width="100" />
+        <el-table-column :label="t('questions.colDifficulty')" width="100">
+          <template #default="{ row }">{{ difficulty(row.difficulty) }}</template>
+        </el-table-column>
         <el-table-column :label="t('questions.colStatus')" width="90">
           <template #default="{ row }">
             <el-tag :type="statusTag(row.status)" size="small">

@@ -20,10 +20,12 @@ import {
   isAnswerFilled,
   paletteStatus,
 } from '@/utils/examAnswers';
+import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 
 const route = useRoute();
 const router = useRouter();
 const { t } = useI18n();
+const { examTitle, personName } = useSeedDataLabels();
 const attemptId = route.params.attemptId as string;
 
 const loading = ref(true);
@@ -297,8 +299,8 @@ onUnmounted(() => {
     <header class="exam-header">
       <div class="header-main">
         <div class="title-block">
-          <h1>{{ attempt?.examTitle }}</h1>
-          <p>{{ attempt?.candidateName }}</p>
+          <h1>{{ examTitle(undefined, attempt?.examTitle) }}</h1>
+          <p>{{ personName({ name: attempt?.candidateName }) }}</p>
         </div>
         <div class="timer" :class="{ urgent: timerUrgent, critical: timerCritical }">
           <span class="timer-label">{{ t('student.timeLeft') }}</span>

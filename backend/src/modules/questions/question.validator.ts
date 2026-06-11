@@ -19,14 +19,37 @@ export function labelToDifficulty(label: string): number {
   return 2;
 }
 
-export function validateQuestionData(input: {
-  type: QuestionType;
-  stem: string;
-  optionsJson?: unknown;
-  standardAnswerJson?: unknown;
-  score: number;
-  scoringRubric?: string;
-}) {
+export function validateQuestionImportData(
+  input: {
+    type: QuestionType;
+    stem: string;
+    optionsJson?: unknown;
+    standardAnswerJson?: unknown;
+    score: number;
+    scoringRubric?: string;
+  },
+  options?: { omitAnswers?: boolean },
+) {
+  if (options?.omitAnswers) {
+    validateQuestionData({ ...input, standardAnswerJson: {}, scoringRubric: undefined }, {
+      skipAnswerChecks: true,
+    });
+    return;
+  }
+  validateQuestionData(input);
+}
+
+export function validateQuestionData(
+  input: {
+    type: QuestionType;
+    stem: string;
+    optionsJson?: unknown;
+    standardAnswerJson?: unknown;
+    score: number;
+    scoringRubric?: string;
+  },
+  validationOptions?: { skipAnswerChecks?: boolean },
+) {
   const stem = input.stem?.trim();
   if (!stem) throw new BadRequestException('Question stem is required');
   if (!input.score || input.score <= 0) {
@@ -35,10 +58,12 @@ export function validateQuestionData(input: {
 
   const options = (input.optionsJson as QuestionOption[] | undefined) ?? [];
   const answer = input.standardAnswerJson as Record<string, unknown>;
+  const skipAnswerChecks = validationOptions?.skipAnswerChecks ?? false;
 
   switch (input.type) {
     case QuestionType.SINGLE_CHOICE:
       validateChoiceOptions(options, 2);
+      if (skipAnswerChecks) break;
       if (!answer?.key || typeof answer.key !== 'string') {
         throw new BadRequestException('Single choice requires exactly one correct answer');
       }
@@ -49,6 +74,7 @@ export function validateQuestionData(input: {
 
     case QuestionType.MULTIPLE_CHOICE:
       validateChoiceOptions(options, 2);
+      if (skipAnswerChecks) break;
       if (!Array.isArray(answer?.keys) || answer.keys.length < 1) {
         throw new BadRequestException('Multiple choice requires at least one correct answer');
       }
@@ -60,6 +86,7 @@ export function validateQuestionData(input: {
       break;
 
     case QuestionType.TRUE_FALSE: {
+      if (skipAnswerChecks) break;
       const key = answer?.key;
       if (key !== 'T' && key !== 'F') {
         throw new BadRequestException('True/False correct answer must be T or F');
@@ -68,6 +95,7 @@ export function validateQuestionData(input: {
     }
 
     case QuestionType.FILL_BLANK: {
+      if (skipAnswerChecks) break;
       const answers = normalizeFillAnswers(answer);
       if (answers.length === 0) {
         throw new BadRequestException('Fill-in-blank requires at least one acceptable answer');
@@ -76,6 +104,7 @@ export function validateQuestionData(input: {
     }
 
     case QuestionType.SHORT_ANSWER:
+      if (skipAnswerChecks) break;
       if (!input.scoringRubric?.trim() && !answer?.reference && !answer?.text) {
         throw new BadRequestException(
           'Short answer requires a scoring rubric or reference answer for grading',

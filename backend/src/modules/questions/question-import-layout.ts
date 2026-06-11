@@ -210,8 +210,6 @@ function buildLayoutFromHeaders(headerCells: Array<{ col: number; norm: string; 
       : 'headers-type-first';
   } else if (layout.stemCol === 2 && layout.typeCol === 1) {
     layout.format = 'headers-legacy';
-  } else if (layout.stemCol && layout.typeCol && layout.stemCol < layout.typeCol) {
-    layout.format = 'headers-stem-first';
   } else {
     layout.format = 'headers-type-first';
   }

@@ -9,8 +9,10 @@ import {
   ImportValidateResult,
   validateQuestionImport,
 } from '@/api/questions';
+import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 
 const { t } = useI18n();
+const { categoryName } = useSeedDataLabels();
 
 defineProps<{ visible: boolean }>();
 const emit = defineEmits<{ 'update:visible': [boolean]; imported: [] }>();
@@ -119,6 +121,16 @@ async function confirmImport() {
       </el-row>
 
       <el-alert
+        v-if="validation.answerKeyVoided"
+        type="warning"
+        show-icon
+        :closable="false"
+        class="format-alert"
+        :title="t('import.answerKeyVoidedTitle')"
+        :description="t('import.answerKeyVoidedDesc')"
+      />
+
+      <el-alert
         v-if="validation.detectedFormat"
         :title="t('import.detectedFormat', { format: validation.detectedFormat })"
         :description="
@@ -148,7 +160,9 @@ async function confirmImport() {
           </template>
         </el-table-column>
         <el-table-column :label="t('questions.colCategory')" width="140">
-          <template #default="{ row }">{{ row.data?.categoryName ?? '—' }}</template>
+          <template #default="{ row }">
+            {{ row.data?.categoryName ? categoryName(undefined, row.data.categoryName) : '—' }}
+          </template>
         </el-table-column>
         <el-table-column :label="t('questions.colPoints')" width="60">
           <template #default="{ row }">{{ row.data?.score ?? '—' }}</template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
 import { Download, Refresh, Search } from '@element-plus/icons-vue';
@@ -10,8 +10,17 @@ import {
   fetchAuditActors,
   fetchAuditLogs,
 } from '@/api/audit';
+import { useAuditLabels } from '@/composables/useAuditLabels';
 
 const { t } = useI18n();
+const {
+  auditAction,
+  auditCategory,
+  auditObjectType,
+  auditActorRole,
+  auditActorName,
+  auditObjectName,
+} = useAuditLabels();
 
 const loading = ref(false);
 const exporting = ref(false);
@@ -35,11 +44,6 @@ const filters = reactive({
 });
 
 const pagination = reactive({ page: 1, pageSize: 50, total: 0 });
-
-const categoryLabel = computed(() => {
-  const map = Object.fromEntries(filterOptions.categories.map((c) => [c.value, c.label]));
-  return (value: string) => map[value] ?? value;
-});
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString();
@@ -166,7 +170,7 @@ onMounted(async () => {
             <el-option
               v-for="a in filterOptions.actors"
               :key="a.id"
-              :label="`${a.name} (${a.employeeNo})`"
+              :label="`${auditActorName(a.name, a.employeeNo)} (${a.employeeNo})`"
               :value="a.id"
             />
           </el-select>
@@ -184,7 +188,7 @@ onMounted(async () => {
             <el-option
               v-for="a in filterOptions.actions"
               :key="a.value"
-              :label="a.label"
+              :label="auditAction(a.value, a.label)"
               :value="a.value"
             />
           </el-select>
@@ -200,7 +204,7 @@ onMounted(async () => {
             <el-option
               v-for="c in filterOptions.categories"
               :key="c.value"
-              :label="c.label"
+              :label="auditCategory(c.value)"
               :value="c.value"
             />
           </el-select>
@@ -213,7 +217,12 @@ onMounted(async () => {
             style="width: 150px"
             @change="onSearch"
           >
-            <el-option v-for="t in filterOptions.objectTypes" :key="t" :label="t" :value="t" />
+            <el-option
+              v-for="ot in filterOptions.objectTypes"
+              :key="ot"
+              :label="auditObjectType(ot)"
+              :value="ot"
+            />
           </el-select>
         </el-form-item>
         <el-form-item :label="t('audit.filterSearch')">
@@ -294,17 +303,31 @@ onMounted(async () => {
       <el-table-column :label="t('audit.colTime')" width="170">
         <template #default="{ row }">{{ formatDate(row.timestamp) }}</template>
       </el-table-column>
-      <el-table-column prop="actorName" :label="t('audit.colActor')" min-width="130" />
+      <el-table-column :label="t('audit.colActor')" min-width="130">
+        <template #default="{ row }">
+          {{ auditActorName(row.actorName, row.actorEmployeeNo) }}
+        </template>
+      </el-table-column>
       <el-table-column :label="t('audit.colRole')" width="120">
-        <template #default="{ row }">{{ row.actorRole ?? '—' }}</template>
+        <template #default="{ row }">{{ auditActorRole(row.actorRole) }}</template>
       </el-table-column>
-      <el-table-column prop="actionLabel" :label="t('audit.colAction')" width="130" />
+      <el-table-column :label="t('audit.colAction')" width="130">
+        <template #default="{ row }">{{ auditAction(row.action, row.actionLabel) }}</template>
+      </el-table-column>
       <el-table-column :label="t('audit.colCategory')" width="150">
-        <template #default="{ row }">{{ categoryLabel(row.actionCategory) }}</template>
+        <template #default="{ row }">{{ auditCategory(row.actionCategory) }}</template>
       </el-table-column>
-      <el-table-column prop="objectType" :label="t('audit.colObjectType')" width="120" />
+      <el-table-column :label="t('audit.colObjectType')" width="120">
+        <template #default="{ row }">{{ auditObjectType(row.objectType) }}</template>
+      </el-table-column>
       <el-table-column :label="t('audit.colObject')" min-width="160">
-        <template #default="{ row }">{{ row.objectName ?? row.objectId ?? '—' }}</template>
+        <template #default="{ row }">
+          {{
+            row.objectName
+              ? auditObjectName(row.objectType, row.objectName)
+              : row.objectId ?? '—'
+          }}
+        </template>
       </el-table-column>
       <el-table-column :label="t('audit.colIp')" width="120">
         <template #default="{ row }">{{ row.ipAddress ?? '—' }}</template>

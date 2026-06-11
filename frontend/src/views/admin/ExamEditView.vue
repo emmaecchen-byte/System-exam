@@ -25,8 +25,12 @@ import {
 } from '@/api/exams';
 import { fetchPublishedPapers } from '@/api/papers';
 import { useExamListBasePath } from '@/composables/useExamListBasePath';
+import { useLocalizedLabels } from '@/composables/useLocalizedLabels';
+import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 
 const { t } = useI18n();
+const { examStatus, sessionStatus } = useLocalizedLabels();
+const { categoryName, departmentName, examTitle, paperLabel, personName } = useSeedDataLabels();
 
 const route = useRoute();
 const router = useRouter();
@@ -360,9 +364,9 @@ watch(
     <div class="page-header">
       <div>
         <el-button link @click="router.push(examBasePath)">{{ t('examEdit.backToExams') }}</el-button>
-        <h2>{{ isNew ? t('examEdit.newExam') : exam?.title }}</h2>
+        <h2>{{ isNew ? t('examEdit.newExam') : examTitle(exam?.id, exam?.title) }}</h2>
         <div v-if="exam" class="meta">
-          <el-tag>{{ exam.statusLabel }}</el-tag>
+          <el-tag>{{ examStatus(exam.status) }}</el-tag>
           <span>{{ t('examEdit.sessionCount', { count: exam.sessionCount }) }}</span>
         </div>
       </div>
@@ -398,12 +402,12 @@ watch(
             </el-form-item>
             <el-form-item :label="t('examEdit.category')" required>
               <el-select v-model="form.categoryId" filterable style="width: 100%">
-                <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+                <el-option v-for="c in categories" :key="c.id" :label="categoryName(c.id, c.name)" :value="c.id" />
               </el-select>
             </el-form-item>
             <el-form-item :label="t('examEdit.paperPublished')" required>
               <el-select v-model="form.paperId" filterable style="width: 100%">
-                <el-option v-for="p in papers" :key="p.id" :label="p.label" :value="p.id" />
+                <el-option v-for="p in papers" :key="p.id" :label="paperLabel(p.label)" :value="p.id" />
               </el-select>
               <p v-if="selectedPaper" class="hint">
                 {{ t('examEdit.paperTotal', { score: selectedPaper.totalScore }) }}
@@ -458,7 +462,9 @@ watch(
             <el-table-column :label="t('examEdit.colEnd')" width="170">
               <template #default="{ row }">{{ new Date(row.endTime).toLocaleString() }}</template>
             </el-table-column>
-            <el-table-column prop="statusLabel" :label="t('common.status')" width="110" />
+            <el-table-column :label="t('common.status')" width="110">
+              <template #default="{ row }">{{ sessionStatus(row.status) }}</template>
+            </el-table-column>
             <el-table-column :label="t('examEdit.colParticipants')" min-width="160">
               <template #default="{ row }">
                 <el-button link type="primary" @click="openParticipants(row.id)">
@@ -525,7 +531,7 @@ watch(
         </el-form-item>
         <el-form-item v-if="targetType === 'DEPARTMENTS'" :label="t('examEdit.departments')">
           <el-select v-model="selectedDepartments" multiple filterable style="width: 100%">
-            <el-option v-for="d in departments" :key="d.id" :label="d.name" :value="d.id" />
+            <el-option v-for="d in departments" :key="d.id" :label="departmentName(d.id, d.name)" :value="d.id" />
           </el-select>
         </el-form-item>
         <template v-if="targetType === 'USERS'">
@@ -545,7 +551,7 @@ watch(
               <el-option
                 v-for="u in candidateResults"
                 :key="u.id"
-                :label="`${u.name} (${u.employeeNo})`"
+                :label="`${personName({ employeeNo: u.employeeNo, name: u.name })} (${u.employeeNo})`"
                 :value="u.id"
               />
             </el-select>
@@ -556,7 +562,9 @@ watch(
       <h4>{{ t('examEdit.currentParticipants', { count: participants.length }) }}</h4>
       <el-table :data="participants" size="small" max-height="200">
         <el-table-column :label="t('common.name')">
-          <template #default="{ row }">{{ row.user.name }}</template>
+          <template #default="{ row }">
+            {{ personName({ employeeNo: row.user.employeeNo, name: row.user.name }) }}
+          </template>
         </el-table-column>
         <el-table-column :label="t('examEdit.employeeNo')">
           <template #default="{ row }">{{ row.user.employeeNo }}</template>

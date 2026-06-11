@@ -8,6 +8,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { AuditService } from '../../common/services/audit.service';
 import { JwtAuthGuard, PermissionsGuard, RolesGuard } from '../../common/guards/auth.guards';
+import { asJwtExpiresIn } from '../../common/utils/jwt-expires.util';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { JwtAuthGuard, PermissionsGuard, RolesGuard } from '../../common/guards/
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>('JWT_SECRET') ?? 'dev-secret',
         signOptions: {
-          expiresIn: config.get<string>('JWT_EXPIRES_IN') ?? '8h',
+          expiresIn: asJwtExpiresIn(config.get<string>('JWT_EXPIRES_IN') ?? '8h'),
         },
       }),
     }),

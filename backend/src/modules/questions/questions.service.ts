@@ -227,7 +227,7 @@ export class QuestionsService {
 
     const removablePaperIds = linkedPaperIds.filter((paperId) => !lockedPaperIds.has(paperId));
 
-    const question = await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx) => {
       if (removablePaperIds.length > 0) {
         await tx.paperQuestion.deleteMany({
           where: { questionId: id, paperId: { in: removablePaperIds } },

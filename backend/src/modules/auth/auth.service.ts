@@ -7,6 +7,7 @@ import { AuditLogInput, AuditService } from '../../common/services/audit.service
 import { RequestAuditContext } from '../../common/utils/request-audit.util';
 import { JwtPayload, RequestUser } from '../../common/decorators/auth.decorator';
 import { ROLE_PERMISSION_MAP, RoleCode } from '../../common/constants';
+import { asJwtExpiresIn } from '../../common/utils/jwt-expires.util';
 import { LoginDto } from './dto/login.dto';
 
 @Injectable()
@@ -80,7 +81,7 @@ export class AuthService {
       ...ctx,
     });
 
-    const accessToken = this.jwtService.sign(payload, { expiresIn });
+    const accessToken = this.jwtService.sign(payload, { expiresIn: asJwtExpiresIn(expiresIn) });
 
     return {
       accessToken,
@@ -128,7 +129,7 @@ export class AuthService {
       permissions: fresh.permissions,
     };
     const expiresIn = this.config.get<string>('JWT_EXPIRES_IN') ?? '8h';
-    const accessToken = this.jwtService.sign(payload, { expiresIn });
+    const accessToken = this.jwtService.sign(payload, { expiresIn: asJwtExpiresIn(expiresIn) });
     return { accessToken, expiresIn, user: fresh };
   }
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { PaletteStatus } from '@/utils/examAnswers';
 
 const props = defineProps<{
@@ -13,12 +14,14 @@ const emit = defineEmits<{
   select: [index: number];
 }>();
 
-const legend = [
-  { status: 'unvisited', label: 'Not visited' },
-  { status: 'answered', label: 'Answered' },
-  { status: 'marked', label: 'Marked' },
-  { status: 'answered-marked', label: 'Both' },
-] as const;
+const { t } = useI18n();
+
+const legend = computed(() => [
+  { status: 'unvisited', label: t('student.paletteNotVisited') },
+  { status: 'answered', label: t('student.paletteAnswered') },
+  { status: 'marked', label: t('student.paletteMarked') },
+  { status: 'answered-marked', label: t('student.paletteBoth') },
+] as const);
 
 const gridClass = computed(() => (props.compact ? 'palette-grid compact' : 'palette-grid'));
 </script>
@@ -32,7 +35,7 @@ const gridClass = computed(() => (props.compact ? 'palette-grid compact' : 'pale
         type="button"
         class="palette-item"
         :class="[statuses[index], { active: index === currentIndex }]"
-        :aria-label="`Question ${index + 1}`"
+        :aria-label="t('student.questionOf', { current: index + 1, total })"
         @click="emit('select', index)"
       >
         {{ index + 1 }}

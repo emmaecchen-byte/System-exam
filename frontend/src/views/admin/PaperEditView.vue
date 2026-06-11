@@ -21,8 +21,12 @@ import {
   updatePaperQuestionScore,
 } from '@/api/papers';
 import QuestionPickerDialog from '@/components/QuestionPickerDialog.vue';
+import { useLocalizedLabels } from '@/composables/useLocalizedLabels';
+import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 
 const { t } = useI18n();
+const { contentStatus } = useLocalizedLabels();
+const { categoryName, paperTitle } = useSeedDataLabels();
 
 const route = useRoute();
 const router = useRouter();
@@ -35,7 +39,7 @@ const categories = ref<Array<{ id: string; name: string }>>([]);
 const versions = ref<PaperListItem[]>([]);
 const pickerVisible = ref(false);
 const previewVisible = ref(false);
-const previewData = ref<{ questions: Array<{ sortOrder: number; score: number; stem: string; typeLabel: string }> } | null>(null);
+const previewData = ref<{ questions: Array<{ sortOrder: number; score: number; stem: string; type?: string }> } | null>(null);
 
 const form = ref({ title: '', categoryId: '' });
 
@@ -163,9 +167,9 @@ onMounted(load);
     <div class="page-header">
       <div>
         <el-button link @click="router.push('/papers')">{{ t('paperEdit.backToPapers') }}</el-button>
-        <h2>{{ paper?.title ?? t('paperEdit.defaultTitle') }}</h2>
+        <h2>{{ paper ? paperTitle(paper.id, paper.title) : t('paperEdit.defaultTitle') }}</h2>
         <div class="meta">
-          <el-tag>{{ paper?.statusLabel }}</el-tag>
+          <el-tag>{{ paper ? contentStatus(paper.status) : '' }}</el-tag>
           <el-tag type="info">{{ paper?.versionLabel }}</el-tag>
           <span>{{ t('paperEdit.totalPts', { score: paper?.totalScore ?? 0 }) }}</span>
           <span>{{ t('paperEdit.questionCount', { count: paper?.questionCount ?? 0 }) }}</span>
@@ -241,7 +245,7 @@ onMounted(load);
             </el-form-item>
             <el-form-item :label="t('common.category')">
               <el-select v-model="form.categoryId" :disabled="!paper?.isEditable" style="width: 100%">
-                <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+                <el-option v-for="c in categories" :key="c.id" :label="categoryName(c.id, c.name)" :value="c.id" />
               </el-select>
             </el-form-item>
             <el-form-item v-if="paper?.isEditable">
@@ -258,7 +262,7 @@ onMounted(load);
               :type="v.id === paperId ? 'primary' : 'info'"
             >
               <router-link :to="`/papers/${v.id}/edit`">
-                {{ v.versionLabel }} — {{ v.statusLabel }} ({{ v.totalScore }} pts)
+                {{ v.versionLabel }} — {{ contentStatus(v.status) }} ({{ v.totalScore }} {{ t('common.pointsAbbr') }})
               </router-link>
             </el-timeline-item>
           </el-timeline>
@@ -276,7 +280,7 @@ onMounted(load);
       <p class="preview-total">{{ t('paperEdit.previewTotal', { score: paper?.totalScore }) }}</p>
       <div v-for="(q, i) in previewData?.questions ?? []" :key="i" class="preview-q">
         <div class="preview-q-head">
-          <span>{{ i + 1 }}. [{{ q.typeLabel }}] ({{ q.score }} pts)</span>
+          <span>{{ i + 1 }}. [{{ typeLabel(q.type) }}] ({{ q.score }} {{ t('common.pointsAbbr') }})</span>
         </div>
         <p>{{ q.stem }}</p>
       </div>

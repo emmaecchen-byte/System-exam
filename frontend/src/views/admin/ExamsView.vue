@@ -19,8 +19,12 @@ import {
   publishExam,
 } from '@/api/exams';
 import QrCodeDialog from '@/components/QrCodeDialog.vue';
+import { useLocalizedLabels } from '@/composables/useLocalizedLabels';
+import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 
 const { t } = useI18n();
+const { examStatus } = useLocalizedLabels();
+const { categoryName, examTitle, paperLabel } = useSeedDataLabels();
 const router = useRouter();
 const auth = useAuthStore();
 const examBasePath = useExamListBasePath();
@@ -251,7 +255,7 @@ onMounted(async () => {
         </el-form-item>
         <el-form-item :label="t('common.category')">
           <el-select v-model="filters.categoryId" clearable @change="onSearch">
-            <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+            <el-option v-for="c in categories" :key="c.id" :label="categoryName(c.id, c.name)" :value="c.id" />
           </el-select>
         </el-form-item>
         <el-form-item :label="t('common.status')">
@@ -273,12 +277,14 @@ onMounted(async () => {
 
     <el-card shadow="never">
       <el-table v-loading="loading" :data="list" stripe>
-        <el-table-column prop="title" :label="t('exams.colTitle')" min-width="180" />
+        <el-table-column :label="t('exams.colTitle')" min-width="180">
+          <template #default="{ row }">{{ examTitle(row.id, row.title) }}</template>
+        </el-table-column>
         <el-table-column :label="t('exams.colCategory')" width="150">
-          <template #default="{ row }">{{ row.category?.name }}</template>
+          <template #default="{ row }">{{ categoryName(row.category?.id, row.category?.name) }}</template>
         </el-table-column>
         <el-table-column :label="t('exams.colPaper')" width="160" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.paper?.label }}</template>
+          <template #default="{ row }">{{ paperLabel(row.paper?.label) }}</template>
         </el-table-column>
         <el-table-column :label="t('exams.colQrCode')" width="100" align="center">
           <template #default="{ row }">
@@ -301,14 +307,14 @@ onMounted(async () => {
             <span v-else class="qr-muted">—</span>
           </template>
         </el-table-column>
-        <el-table-column prop="passScore" :label="t('common.pass')" width="70" />
-        <el-table-column prop="durationMinutes" :label="t('common.minAbbr')" width="70" />
+        <el-table-column prop="passScore" :label="t('common.passScore')" width="90" />
+        <el-table-column prop="durationMinutes" :label="t('common.duration')" width="80" />
         <el-table-column :label="t('exams.colSessions')" width="90">
           <template #default="{ row }">{{ row.sessionCount }}</template>
         </el-table-column>
         <el-table-column :label="t('exams.colStatus')" width="110">
           <template #default="{ row }">
-            <el-tag :type="statusTag(row.status)" size="small">{{ row.statusLabel }}</el-tag>
+            <el-tag :type="statusTag(row.status)" size="small">{{ examStatus(row.status) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column :label="t('exams.colUpdated')" width="170">

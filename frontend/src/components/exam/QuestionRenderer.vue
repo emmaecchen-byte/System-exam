@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { ExamQuestion } from '@/api/candidate';
 import { blankCountFromStem } from '@/utils/examAnswers';
+import { useLocalizedLabels } from '@/composables/useLocalizedLabels';
 
 const props = defineProps<{
   question: ExamQuestion;
@@ -12,12 +14,15 @@ const emit = defineEmits<{
   'update:modelValue': [value: Record<string, unknown>];
 }>();
 
+const { t } = useI18n();
+const { trueFalseLabel } = useLocalizedLabels();
+
 const options = computed(() => {
   if (props.question.type === 'TRUE_FALSE') {
     return (
       props.question.options ?? [
-        { key: 'T', label: 'True' },
-        { key: 'F', label: 'False' },
+        { key: 'T', label: trueFalseLabel('T') },
+        { key: 'F', label: trueFalseLabel('F') },
       ]
     );
   }
@@ -85,12 +90,12 @@ function updateBlank(index: number, value: string) {
 
     <template v-else-if="question.type === 'FILL_BLANK'">
       <div v-for="(_, index) in blankCount" :key="index" class="blank-row">
-        <label :for="`blank-${question.id}-${index}`">Blank {{ index + 1 }}</label>
+        <label :for="`blank-${question.id}-${index}`">{{ t('student.blankLabel', { n: index + 1 }) }}</label>
         <el-input
           :id="`blank-${question.id}-${index}`"
           :model-value="blankAnswers[index]"
           size="large"
-          placeholder="Your answer"
+          :placeholder="t('student.answerPlaceholder')"
           @update:model-value="updateBlank(index, $event)"
         />
       </div>
@@ -101,7 +106,7 @@ function updateBlank(index: number, value: string) {
       v-model="textValue"
       type="textarea"
       :rows="5"
-      placeholder="Type your answer"
+      :placeholder="t('student.shortAnswerPlaceholder')"
       class="short-answer"
     />
   </div>
@@ -118,19 +123,17 @@ function updateBlank(index: number, value: string) {
   align-items: center;
   gap: 12px;
   min-height: 44px;
-  padding: 10px 14px;
+  padding: 10px 12px;
   border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  background: #fff;
+  border-radius: 8px;
   cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
 }
 .option-touch.selected {
   border-color: #2563eb;
   background: #eff6ff;
 }
 .native-input {
-  width: 20px;
-  height: 20px;
   flex-shrink: 0;
 }
 .option-label {
@@ -142,11 +145,7 @@ function updateBlank(index: number, value: string) {
   flex-direction: column;
   gap: 6px;
 }
-.blank-row label {
-  font-size: 13px;
-  color: #6b7280;
-}
-.short-answer :deep(textarea) {
-  font-size: 16px;
+.short-answer {
+  width: 100%;
 }
 </style>

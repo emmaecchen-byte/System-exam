@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AuditAction, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import { PrismaService } from '../../prisma/prisma.module';
 import {

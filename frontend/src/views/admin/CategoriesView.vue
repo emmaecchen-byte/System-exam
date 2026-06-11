@@ -13,8 +13,10 @@ import {
   updateCategory,
   updateCategoryStatus,
 } from '@/api/categories';
+import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 
 const { t } = useI18n();
+const { categoryName, categoryDescription } = useSeedDataLabels();
 const loading = ref(false);
 const saving = ref(false);
 const list = ref<ExamCategory[]>([]);
@@ -291,15 +293,17 @@ onMounted(loadList);
         stripe
         @sort-change="onSortChange"
       >
-        <el-table-column prop="name" :label="t('categories.colName')" sortable="custom" min-width="180" />
-        <el-table-column prop="description" :label="t('categories.colDescription')" min-width="220" show-overflow-tooltip>
+        <el-table-column :label="t('categories.colName')" sortable="custom" min-width="180">
+          <template #default="{ row }">{{ categoryName(row.id, row.name) }}</template>
+        </el-table-column>
+        <el-table-column :label="t('categories.colDescription')" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
-            {{ row.description || '—' }}
+            {{ categoryDescription(row.id, row.description) }}
           </template>
         </el-table-column>
         <el-table-column :label="t('categories.colParent')" min-width="160">
           <template #default="{ row }">
-            {{ row.parent?.name || '—' }}
+            {{ row.parent ? categoryName(row.parent.id, row.parent.name) : '—' }}
           </template>
         </el-table-column>
         <el-table-column prop="status" :label="t('categories.colStatus')" sortable="custom" width="110">
@@ -373,7 +377,7 @@ onMounted(loadList);
             <el-option
               v-for="opt in parentOptions"
               :key="opt.id"
-              :label="opt.name"
+              :label="categoryName(opt.id, opt.name)"
               :value="opt.id"
             />
           </el-select>

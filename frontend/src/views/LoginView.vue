@@ -7,11 +7,13 @@ import { useAuthStore } from '@/stores/auth';
 import { getLoginErrorMessage } from '@/utils/authErrors';
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue';
 import api from '@/api/client';
+import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
 const { t } = useI18n();
+const { personName } = useSeedDataLabels();
 
 const form = ref({
   identifier: '',
@@ -19,15 +21,25 @@ const form = ref({
   rememberMe: false,
 });
 const loading = ref(false);
+const checkingServer = ref(false);
 const serverOnline = ref<boolean | null>(null);
 
-async function checkServer() {
-  try {
-    await api.get('/health', { timeout: 5000 });
-    serverOnline.value = true;
-  } catch {
-    serverOnline.value = false;
+async function checkServer(maxAttempts = 8, delayMs = 1500) {
+  checkingServer.value = true;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      await api.get('/health', { timeout: 5000 });
+      serverOnline.value = true;
+      checkingServer.value = false;
+      return;
+    } catch {
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
   }
+  serverOnline.value = false;
+  checkingServer.value = false;
 }
 
 onMounted(async () => {
@@ -61,7 +73,11 @@ async function submit() {
       form.value.password,
       form.value.rememberMe,
     );
-    ElMessage.success(t('login.welcome', { name: user.name }));
+    ElMessage.success(
+      t('login.welcome', {
+        name: personName({ employeeNo: user.employeeNo, name: user.name }),
+      }),
+    );
     const redirect = (route.query.redirect as string) || auth.homeRoute;
     router.push(redirect);
   } catch (error) {
@@ -87,12 +103,18 @@ async function submit() {
       <el-alert
         v-if="serverOnline === false"
         :title="t('login.apiOffline')"
-        :description="t('login.apiOfflineHint')"
         type="error"
         show-icon
         :closable="false"
         class="server-alert"
-      />
+      >
+        <template #default>
+          <p class="server-alert-text">{{ t('login.apiOfflineHint') }}</p>
+          <el-button size="small" :loading="checkingServer" @click="checkServer()">
+            {{ t('login.retryConnection') }}
+          </el-button>
+        </template>
+      </el-alert>
 
       <el-form label-position="top" @submit.prevent="submit">
         <el-form-item :label="t('login.identifier')">
@@ -164,6 +186,11 @@ async function submit() {
 }
 .server-alert {
   margin-bottom: 16px;
+}
+.server-alert-text {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
 }
 .submit {
   width: 100%;

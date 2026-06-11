@@ -408,7 +408,7 @@ export class StudentService {
     sessionId?: string,
     ctx: RequestAuditContext = {},
     actorRole?: string,
-    actorName?: string,
+    _actorName?: string,
   ) {
     await this.ensureParticipant(examId, userId);
     const exam = await this.prisma.exam.findUnique({

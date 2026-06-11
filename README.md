@@ -29,12 +29,13 @@ Local development uses **SQLite** so you can run immediately without PostgreSQL 
 # From project root — one-time setup
 npm run setup
 
-# Start both API + frontend
-cd backend && npm run start:dev    # terminal 1 → http://localhost:3000
-cd frontend && npm run dev         # terminal 2 → http://localhost:5173
+# Start both API + frontend (recommended)
+npm run dev
 ```
 
-Or install root `concurrently` and use `npm run dev` from the project root after setup.
+Open **http://localhost:5173** in your browser (not port 3000 — that is API only).
+
+The first API startup can take 10–20 seconds while NestJS compiles; the dev script waits for the API before opening the frontend.
 
 ### URLs
 

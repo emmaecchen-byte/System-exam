@@ -21,7 +21,11 @@ async function logout() {
   <div class="student-layout" :class="{ 'exam-mode': examMode }">
     <header v-if="!examMode" class="topbar">
       <router-link to="/candidate" class="brand">{{ t('app.myExams') }}</router-link>
-      <LayoutHeaderActions :user-name="auth.user?.name" @logout="logout" />
+      <LayoutHeaderActions
+        :user-name="auth.user?.name"
+        :employee-no="auth.user?.employeeNo"
+        @logout="logout"
+      />
     </header>
     <main class="content">
       <router-view />

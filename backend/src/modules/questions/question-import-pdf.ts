@@ -170,15 +170,70 @@ interface ChineseAnswerKey {
 
 const CHINESE_SECTION_RE = /^[一二三四五六七八九十]+、(.+)$/;
 const CHINESE_QUESTION_RE = /^(\d+)\.\s+(.+)$/;
-const CHINESE_OPTION_RE = /^([A-D])[\.\、]\s*(.+)$/;
+const CHINESE_OPTION_RE = /^([A-D])[.、]\s*(.+)$/;
 const PAGE_MARKER_RE = /^--\s*\d+\s+of\s+\d+\s*--$/;
 
 function collapseInlineWhitespace(text: string): string {
   return text.replace(/\t+/g, ' ').replace(/ {2,}/g, ' ').trim();
 }
 
+export type AnswerKeyLayout =
+  | 'chinese_reference_section'
+  | 'english_trailing_section'
+  | null;
+
+/** Detect a separate answer-key section bundled with exam questions in the same file. */
+export function detectAnswerKeyLayout(text: string): AnswerKeyLayout {
+  const normalized = normalizePdfExamText(text);
+  if (/参考答案/.test(normalized)) return 'chinese_reference_section';
+
+  const trailingMarkers = [
+    /\n\s*Answer\s+Key\s*(?:\n|$)/i,
+    /\n\s*Section\s+\d+\s*:\s*Answer(?:\s+Key)?\s*(?:\n|$)/i,
+    /\n-{3,}\s*\n\s*Answers?\s*(?:\n|$)/i,
+  ];
+  if (trailingMarkers.some((pattern) => pattern.test(normalized))) {
+    return 'english_trailing_section';
+  }
+
+  return null;
+}
+
 function isChineseIqcExam(text: string): boolean {
   return /[一二三四五六七八九十]+、/.test(text) && /参考答案/.test(text);
+}
+
+function splitBodyBeforeAnswerKey(text: string, layout: AnswerKeyLayout): string {
+  if (!layout) return text;
+
+  if (layout === 'chinese_reference_section') {
+    const idx = text.search(/参考答案/);
+    return idx >= 0 ? text.slice(0, idx) : text;
+  }
+
+  const normalized = normalizePdfExamText(text);
+  const markers = [
+    /\n\s*Answer\s+Key\s*(?:\n|$)/i,
+    /\n\s*Section\s+\d+\s*:\s*Answer(?:\s+Key)?\s*(?:\n|$)/i,
+    /\n-{3,}\s*\n\s*Answers?\s*(?:\n|$)/i,
+  ];
+  for (const pattern of markers) {
+    const match = normalized.match(pattern);
+    if (match?.index !== undefined) {
+      return normalized.slice(0, match.index);
+    }
+  }
+
+  return text;
+}
+
+function stripFieldsAnswerData(fields: ExtractedImportRow): ExtractedImportRow {
+  return {
+    ...fields,
+    answerRaw: '',
+    scoringRubric: undefined,
+    explanation: fields.explanation,
+  };
 }
 
 function inferChineseTypeRaw(sectionTitle: string): string {
@@ -359,14 +414,27 @@ function flushChineseQuestion(
   };
 }
 
-function parseChineseIqcExamText(text: string): Array<{ row: number; fields: ExtractedImportRow }> {
+function parseChineseIqcExamText(
+  text: string,
+  parseOptions?: { voidAnswerKey?: boolean },
+): Array<{ row: number; fields: ExtractedImportRow }> {
   const normalized = collapseInlineWhitespace(normalizePdfExamText(text));
   if (!normalized) return [];
 
+  const voidAnswerKey = parseOptions?.voidAnswerKey ?? false;
   const answerIdx = normalized.search(/参考答案/);
   const body = answerIdx >= 0 ? normalized.slice(0, answerIdx) : normalized;
-  const answerPart = answerIdx >= 0 ? normalized.slice(answerIdx) : '';
-  const answers = parseChineseAnswerSection(answerPart);
+  const answers =
+    voidAnswerKey || answerIdx < 0
+      ? null
+      : parseChineseAnswerSection(normalized.slice(answerIdx));
+  const emptyAnswers: ChineseAnswerKey = {
+    choice: new Map(),
+    trueFalse: new Map(),
+    shortAnswer: '',
+    caseStudy: '',
+  };
+  const answerKey = answers ?? emptyAnswers;
 
   let context: ChineseSectionContext = {
     typeRaw: '选择题',
@@ -384,7 +452,7 @@ function parseChineseIqcExamText(text: string): Array<{ row: number; fields: Ext
 
   const flushCurrent = () => {
     if (!stem) return;
-    const parsed = flushChineseQuestion(row || results.length + 1, stem, options, context, answers);
+    const parsed = flushChineseQuestion(row || results.length + 1, stem, options, context, answerKey);
     if (parsed) results.push(parsed);
     stem = '';
     options = [];
@@ -429,8 +497,14 @@ function parseChineseIqcExamText(text: string): Array<{ row: number; fields: Ext
   return results;
 }
 
-function parseEnglishPdfExamText(text: string): Array<{ row: number; fields: ExtractedImportRow }> {
-  const normalized = normalizePdfExamText(text);
+function parseEnglishPdfExamText(
+  text: string,
+  parseOptions?: { voidAnswerKey?: boolean },
+): Array<{ row: number; fields: ExtractedImportRow }> {
+  const layout = parseOptions?.voidAnswerKey ? detectAnswerKeyLayout(text) : null;
+  const normalized = normalizePdfExamText(
+    layout === 'english_trailing_section' ? splitBodyBeforeAnswerKey(text, layout) : text,
+  );
   if (!normalized) return [];
 
   let context: PdfSectionContext = {
@@ -460,12 +534,52 @@ function parseEnglishPdfExamText(text: string): Array<{ row: number; fields: Ext
   return results;
 }
 
+export interface PdfExamParseResult {
+  rows: Array<{ row: number; fields: ExtractedImportRow }>;
+  answerKeyDetected: boolean;
+  answerKeyVoided: boolean;
+  answerKeyLayout: AnswerKeyLayout;
+}
+
 /**
  * Parse exam-question PDF text (English template or Chinese IQC-style papers).
+ * When a bundled answer-key section is detected it is stripped and never merged into questions.
  */
-export function parsePdfExamText(text: string): Array<{ row: number; fields: ExtractedImportRow }> {
-  const english = parseEnglishPdfExamText(text);
-  if (english.length) return english;
-  if (isChineseIqcExam(text)) return parseChineseIqcExamText(text);
-  return [];
+export function parsePdfExamText(text: string): PdfExamParseResult {
+  const answerKeyLayout = detectAnswerKeyLayout(text);
+  const answerKeyDetected = answerKeyLayout !== null;
+  const voidAnswerKey = answerKeyDetected;
+
+  const english = parseEnglishPdfExamText(text, { voidAnswerKey });
+  if (english.length) {
+    const rows = voidAnswerKey ? english.map((row) => ({
+      ...row,
+      fields: stripFieldsAnswerData(row.fields),
+    })) : english;
+    return {
+      rows,
+      answerKeyDetected,
+      answerKeyVoided: voidAnswerKey,
+      answerKeyLayout,
+    };
+  }
+
+  if (isChineseIqcExam(text)) {
+    const rows = parseChineseIqcExamText(text, { voidAnswerKey });
+    return {
+      rows: voidAnswerKey
+        ? rows.map((row) => ({ ...row, fields: stripFieldsAnswerData(row.fields) }))
+        : rows,
+      answerKeyDetected,
+      answerKeyVoided: voidAnswerKey,
+      answerKeyLayout: answerKeyLayout ?? 'chinese_reference_section',
+    };
+  }
+
+  return {
+    rows: [],
+    answerKeyDetected: false,
+    answerKeyVoided: false,
+    answerKeyLayout: null,
+  };
 }

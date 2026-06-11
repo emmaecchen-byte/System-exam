@@ -268,7 +268,7 @@ export class PapersService {
     paperId: string,
     questionId: string,
     dto: UpdatePaperQuestionScoreDto,
-    actorId?: string,
+    _actorId?: string,
   ) {
     const paper = await this.getPaperOrThrow(paperId);
     this.assertEditable(paper);
@@ -283,7 +283,7 @@ export class PapersService {
     return this.findOne(paperId);
   }
 
-  async reorderQuestions(paperId: string, dto: ReorderPaperQuestionsDto, actorId?: string) {
+  async reorderQuestions(paperId: string, dto: ReorderPaperQuestionsDto, _actorId?: string) {
     const paper = await this.getPaperOrThrow(paperId);
     this.assertEditable(paper);
 
