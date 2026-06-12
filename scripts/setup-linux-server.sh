@@ -23,22 +23,15 @@ echo "==> Exam system server setup"
 echo "    Web:  ${SERVER_PUBLIC_URL}"
 echo "    API:  127.0.0.1:${EXAM_API_PORT} (proxied as /api through web port)"
 
-# --- Node.js via nvm (user install, no sudo) ---
-export NVM_DIR="${HOME}/.nvm"
-if [[ -s "$NVM_DIR/nvm.sh" ]]; then
-  # shellcheck disable=SC1091
-  source "$NVM_DIR/nvm.sh"
-elif [[ ! -d "$NVM_DIR" ]]; then
-  echo "==> Installing nvm…"
-  curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-  # shellcheck disable=SC1091
-  source "$NVM_DIR/nvm.sh"
-fi
+# --- Node.js (user install, no sudo) ---
+bash "$ROOT/scripts/install-node-user.sh"
+export PATH="${HOME}/.local/bin:${PATH}"
+# shellcheck disable=SC1091
+[[ -s "${HOME}/.nvm/nvm.sh" ]] && source "${HOME}/.nvm/nvm.sh"
 
 if ! command -v node >/dev/null 2>&1; then
-  echo "==> Installing Node.js 20…"
-  nvm install 20
-  nvm use 20
+  echo "Node.js not available. Check network access to nodejs.org or GitHub."
+  exit 1
 fi
 
 echo "    Node: $(node -v)"

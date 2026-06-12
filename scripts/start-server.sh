@@ -17,7 +17,8 @@ export EXAM_WEB_PORT="${EXAM_WEB_PORT:-8895}"
 export EXAM_API_PORT="${EXAM_API_PORT:-3000}"
 export SERVER_PUBLIC_URL="${SERVER_PUBLIC_URL:-http://127.0.0.1:${EXAM_WEB_PORT}}"
 
-# Load nvm if present
+# Load nvm / user-local node if present
+export PATH="${HOME}/.local/bin:${PATH}"
 export NVM_DIR="${HOME}/.nvm"
 if [[ -s "$NVM_DIR/nvm.sh" ]]; then
   # shellcheck disable=SC1091
