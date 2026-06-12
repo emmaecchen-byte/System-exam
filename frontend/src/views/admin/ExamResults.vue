@@ -220,7 +220,7 @@ async function submitCorrection() {
   try {
     await regradeAttempt(correctionTarget.value.attemptId, {
       reason: correctionForm.reason.trim(),
-      adjustedScore: correctionForm.adjustedScore,
+      newScore: correctionForm.adjustedScore,
     });
     ElMessage.success(t('examResults.scoreCorrected'));
     correctionVisible.value = false;
@@ -245,8 +245,10 @@ async function publishResults() {
 
   publishing.value = true;
   try {
-    await publishExamResults(examId.value);
-    ElMessage.success(t('examEdit.publishResultsSuccess'));
+    const { data } = await publishExamResults(examId.value);
+    ElMessage.success(
+      t('examEdit.publishResultsSuccess', { count: data.publishedCount ?? 0 }),
+    );
     await load();
   } catch (err: unknown) {
     ElMessage.error(apiError(err, t('examEdit.publishResultsFailed')));

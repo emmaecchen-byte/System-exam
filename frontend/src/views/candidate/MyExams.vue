@@ -13,7 +13,8 @@ type CandidateState =
   | 'IN_PROGRESS'
   | 'PENDING_GRADING'
   | 'GRADED_PUBLISHED'
-  | 'NOT_TAKEN';
+  | 'NOT_TAKEN'
+  | 'ADMIN_CLOSED';
 
 interface CandidateExam {
   examId: string;
@@ -21,6 +22,9 @@ interface CandidateExam {
   attemptId?: string | null;
   title: string;
   category: string;
+  examStatus?: string;
+  closedAt?: string | null;
+  isClosed?: boolean;
   startTime: string | null;
   endTime: string | null;
   durationMinutes: number;
@@ -79,7 +83,12 @@ function formatRange(start: string | null, end: string | null) {
   return `${new Date(start).toLocaleString()} – ${new Date(end).toLocaleString()}`;
 }
 
+function isExamClosed(row: CandidateExam) {
+  return row.isClosed || row.candidateState === 'ADMIN_CLOSED' || row.examStatus === 'COMPLETED' || Boolean(row.closedAt);
+}
+
 function statusTagType(row: CandidateExam): 'success' | 'warning' | 'info' | 'danger' {
+  if (isExamClosed(row)) return 'danger';
   switch (row.candidateState) {
     case 'UPCOMING':
       return 'warning';
@@ -104,6 +113,7 @@ function resultText(row: CandidateExam) {
 }
 
 function canClickAction(row: CandidateExam) {
+  if (isExamClosed(row) && !row.canViewResult) return false;
   return row.canEnter || (row.canViewResult && Boolean(row.attemptId));
 }
 
@@ -190,9 +200,14 @@ function onAction(row: CandidateExam) {
           <article v-for="row in currentList" :key="`${row.examId}-${row.attemptId ?? 'new'}`" class="exam-card">
             <div class="exam-card-head">
               <h3 class="exam-card-title">{{ examTitle(row.examId, row.title) }}</h3>
-              <el-tag size="small" :type="statusTagType(row)">
-                {{ candidateStatusLabel(row.candidateState, row.statusLabel) }}
-              </el-tag>
+              <div class="exam-card-tags">
+                <el-tag v-if="isExamClosed(row)" size="small" type="danger">
+                  {{ t('student.examClosedBadge') }}
+                </el-tag>
+                <el-tag size="small" :type="statusTagType(row)">
+                  {{ candidateStatusLabel(row.candidateState, row.statusLabel) }}
+                </el-tag>
+              </div>
             </div>
 
             <dl class="exam-card-meta">
@@ -221,14 +236,32 @@ function onAction(row: CandidateExam) {
             </dl>
 
             <div class="exam-card-actions">
+              <el-tooltip
+                v-if="isExamClosed(row) && row.canEnter"
+                :content="t('student.examClosedTooltip')"
+                placement="top"
+              >
+                <span class="action-disabled-wrap">
+                  <el-button type="primary" class="action-btn" disabled>
+                    {{ t('student.startExam') }}
+                  </el-button>
+                </span>
+              </el-tooltip>
               <el-button
-                v-if="canClickAction(row)"
+                v-else-if="canClickAction(row)"
                 type="primary"
                 class="action-btn"
                 @click="onAction(row)"
               >
                 {{ candidateActionLabel(row.actionLabel) }}
               </el-button>
+              <el-tooltip
+                v-else-if="isExamClosed(row)"
+                :content="t('student.examClosedTooltip')"
+                placement="top"
+              >
+                <span class="muted">{{ t('student.examClosedBadge') }}</span>
+              </el-tooltip>
               <span v-else class="muted">{{ candidateActionLabel(row.actionLabel) }}</span>
             </div>
           </article>
@@ -256,16 +289,34 @@ function onAction(row: CandidateExam) {
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column :label="t('student.colAction')" width="150">
+            <el-table-column :label="t('student.colAction')" width="180">
               <template #default="{ row }">
+                <el-tooltip
+                  v-if="isExamClosed(row) && row.canEnter"
+                  :content="t('student.examClosedTooltip')"
+                  placement="top"
+                >
+                  <span class="action-disabled-wrap">
+                    <el-button type="primary" size="small" disabled>
+                      {{ t('student.startExam') }}
+                    </el-button>
+                  </span>
+                </el-tooltip>
                 <el-button
-                  v-if="canClickAction(row)"
+                  v-else-if="canClickAction(row)"
                   type="primary"
                   size="small"
                   @click="onAction(row)"
                 >
                   {{ candidateActionLabel(row.actionLabel) }}
                 </el-button>
+                <el-tooltip
+                  v-else-if="isExamClosed(row)"
+                  :content="t('student.examClosedTooltip')"
+                  placement="top"
+                >
+                  <span class="muted">{{ t('student.examClosedBadge') }}</span>
+                </el-tooltip>
                 <span v-else class="muted">{{ candidateActionLabel(row.actionLabel) }}</span>
               </template>
             </el-table-column>
@@ -396,6 +447,20 @@ function onAction(row: CandidateExam) {
   align-items: flex-start;
   gap: 10px;
   margin-bottom: 12px;
+}
+.exam-card-tags {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.action-disabled-wrap {
+  display: inline-block;
+  width: 100%;
+}
+.action-disabled-wrap .action-btn {
+  width: 100%;
 }
 .exam-card-title {
   margin: 0;

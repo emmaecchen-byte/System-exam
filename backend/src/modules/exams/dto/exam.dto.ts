@@ -6,7 +6,7 @@ import {
   IsString,
   Min,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateExamDto {
@@ -48,14 +48,16 @@ export class CreateExamDto {
   @Min(1)
   maxAttempts?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ name: 'random_question_order' })
   @IsOptional()
   @IsBoolean()
+  @Transform(({ obj, value }) => value ?? obj.random_question_order)
   randomQuestionOrder?: boolean;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ name: 'random_option_order' })
   @IsOptional()
   @IsBoolean()
+  @Transform(({ obj, value }) => value ?? obj.random_option_order)
   randomOptionOrder?: boolean;
 
   @ApiPropertyOptional()
@@ -113,14 +115,16 @@ export class UpdateExamDto {
   @Min(1)
   maxAttempts?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ name: 'random_question_order' })
   @IsOptional()
   @IsBoolean()
+  @Transform(({ obj, value }) => value ?? obj.random_question_order)
   randomQuestionOrder?: boolean;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ name: 'random_option_order' })
   @IsOptional()
   @IsBoolean()
+  @Transform(({ obj, value }) => value ?? obj.random_option_order)
   randomOptionOrder?: boolean;
 
   @ApiPropertyOptional()

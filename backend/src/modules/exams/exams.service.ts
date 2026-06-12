@@ -357,19 +357,17 @@ export class ExamsService {
       throw new BadRequestException('Only published or in-progress exams can be closed');
     }
 
-    const closeStatus = await this.lifecycleService.resolveCloseStatus(id);
     const now = new Date();
-    const closed = await this.prisma.exam.update({
+    await this.prisma.exam.update({
       where: { id },
       data: {
-        status: closeStatus,
+        status: ExamStatus.COMPLETED,
         closedAt: now,
       },
-      include: examInclude,
     });
 
     await this.prisma.examSession.updateMany({
-      where: { examId: id, status: { in: ['PUBLISHED', 'IN_PROGRESS'] } },
+      where: { examId: id },
       data: { status: 'CLOSED' },
     });
 
@@ -380,9 +378,11 @@ export class ExamsService {
       action: 'CLOSE',
       objectType: 'Exam',
       objectId: id,
+      objectName: exam.title,
+      reason: 'Exam closed by administrator — candidates can no longer enter',
     });
 
-    return this.toResponse(closed);
+    return { success: true, message: 'Exam closed successfully' };
   }
 
   async archive(id: string, actorId?: string) {
@@ -431,7 +431,7 @@ export class ExamsService {
 
     const now = new Date();
 
-    await this.prisma.$transaction(async (tx) => {
+    const publishedCount = await this.prisma.$transaction(async (tx) => {
       await tx.exam.update({
         where: { id: examId },
         data: {
@@ -445,22 +445,12 @@ export class ExamsService {
         data: { resultsPublishedAt: now },
       });
 
-      const attemptIds = (
-        await tx.examAttempt.findMany({
-          where: { examId },
-          select: { id: true },
-        })
-      ).map((a) => a.id);
+      const { count } = await tx.scoreRecord.updateMany({
+        where: { attempt: { examId } },
+        data: { publishedAt: now, publishedById: actorId },
+      });
 
-      if (attemptIds.length) {
-        await tx.scoreRecord.updateMany({
-          where: {
-            attemptId: { in: attemptIds },
-            result: { in: ['PASS', 'FAIL'] },
-          },
-          data: { publishedAt: now, publishedById: actorId },
-        });
-      }
+      return count;
     });
 
     await this.auditService.log({
@@ -472,7 +462,7 @@ export class ExamsService {
       reason: reason ?? 'Exam results published to candidates',
     });
 
-    return { success: true, publishedAt: now.toISOString() };
+    return { success: true, publishedCount, publishedAt: now.toISOString() };
   }
 
   async unpublishResults(examId: string, actorId: string, reason?: string) {

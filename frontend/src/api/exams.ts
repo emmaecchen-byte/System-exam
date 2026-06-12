@@ -104,7 +104,7 @@ export function publishExam(id: string) {
 }
 
 export function closeExam(id: string) {
-  return api.post(`/admin/exams/${id}/close`);
+  return api.post<{ success: boolean; message: string }>(`/admin/exams/${id}/close`);
 }
 
 export function archiveExam(id: string) {
@@ -112,7 +112,9 @@ export function archiveExam(id: string) {
 }
 
 export function publishExamResults(id: string) {
-  return api.post<{ success: boolean; publishedAt: string }>(`/admin/exams/${id}/publish-results`);
+  return api.post<{ success: boolean; publishedCount: number; publishedAt: string }>(
+    `/admin/exams/${id}/publish-results`,
+  );
 }
 
 export function unpublishExamResults(id: string) {

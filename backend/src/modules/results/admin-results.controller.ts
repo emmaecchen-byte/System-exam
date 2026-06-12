@@ -4,6 +4,7 @@ import { Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions, RequestUser, Roles } from '../../common/decorators/auth.decorator';
 import { PERMISSIONS, ROLES } from '../../common/constants';
+import { ModifyScoreDto } from '../scores/dto/modify-score.dto';
 import { RegradeAttemptDto, ResultsQueryDto } from './dto/results.dto';
 import { ResultsService } from './results.service';
 
@@ -62,7 +63,18 @@ export class AdminResultsController {
   @Post('admin/attempts/:attemptId/regrade')
   @RequirePermissions(PERMISSIONS.RESULT_CORRECT)
   @Roles(ROLES.SUPER_ADMIN, ROLES.ADMIN)
-  regrade(
+  modifyScore(
+    @Param('attemptId') attemptId: string,
+    @Body() dto: ModifyScoreDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.resultsService.modifyAttemptScore(attemptId, dto, user);
+  }
+
+  @Post('admin/attempts/:attemptId/full-regrade')
+  @RequirePermissions(PERMISSIONS.RESULT_CORRECT)
+  @Roles(ROLES.SUPER_ADMIN, ROLES.ADMIN)
+  fullRegrade(
     @Param('attemptId') attemptId: string,
     @Body() dto: RegradeAttemptDto,
     @CurrentUser() user: RequestUser,

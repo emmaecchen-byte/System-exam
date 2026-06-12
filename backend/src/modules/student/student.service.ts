@@ -14,7 +14,6 @@ import {
 } from '../../common/utils/shuffle.util';
 import { toCandidateQuestion } from '../questions/questions.service';
 import { ExamLifecycleService } from '../exams/exam-lifecycle.service';
-import { isWithinExamWindow } from '../exams/exam-lifecycle.util';
 import { TimerService } from '../timer/timer.service';
 import { AutoGradeService } from './auto-grade.service';
 import { BatchSaveAnswersDto, CandidateAuditEventDto, SaveAnswerDto } from './dto/student.dto';
@@ -167,7 +166,10 @@ export class StudentService {
       .filter(
         (p) =>
           activeExamStatuses.has(p.exam.status) ||
-          examsWithAttempts.has(p.examId),
+          examsWithAttempts.has(p.examId) ||
+          p.exam.closedAt != null ||
+          p.exam.status === 'COMPLETED' ||
+          p.exam.status === 'PENDING_GRADING',
       )
       .map((p) => {
         const startTime = p.session?.startTime ?? p.exam.startTime;
@@ -185,6 +187,7 @@ export class StudentService {
           endTime,
           now,
           p.exam.status,
+          p.exam.closedAt,
         );
 
         const score = attempt?.scoreRecord;
@@ -204,6 +207,8 @@ export class StudentService {
           title: p.exam.title,
           category: p.exam.category.name,
           examStatus: p.exam.status,
+          closedAt: p.exam.closedAt,
+          isClosed: Boolean(p.exam.closedAt) || p.exam.status === 'COMPLETED',
           attemptStatus: attempt?.status ?? null,
           startTime,
           endTime,
@@ -237,6 +242,7 @@ export class StudentService {
     endTime: Date | null | undefined,
     now: Date,
     examStatus: string,
+    closedAt: Date | null = null,
   ) {
     const windowOpen =
       (!startTime || now >= new Date(startTime)) &&
@@ -244,6 +250,7 @@ export class StudentService {
     const beforeStart = Boolean(startTime && now < new Date(startTime));
     const afterEnd = Boolean(endTime && now > new Date(endTime));
     const examTakeable = examStatus === 'IN_PROGRESS';
+    const adminClosed = closedAt != null || examStatus === 'COMPLETED';
 
     if (attempt?.status === 'IN_PROGRESS') {
       return {
@@ -288,6 +295,17 @@ export class StudentService {
         tab: 'finished' as const,
         statusLabel: graded ? 'Awaiting result publication' : 'Pending grading',
         actionLabel: graded ? 'Results not published yet' : 'Awaiting results',
+        canEnter: false,
+        canViewResult: false,
+      };
+    }
+
+    if (adminClosed) {
+      return {
+        candidateState: 'ADMIN_CLOSED' as const,
+        tab: 'finished' as const,
+        statusLabel: 'Closed',
+        actionLabel: 'Closed by administrator',
         canEnter: false,
         canViewResult: false,
       };
@@ -344,12 +362,10 @@ export class StudentService {
         publishedAt: Date | null;
       } | null;
     },
-    examResultsPublishedAt: Date | null,
+    _examResultsPublishedAt: Date | null,
   ): boolean {
     return (
       this.isGradingFinalized(attempt, attempt.scoreRecord) &&
-      examResultsPublishedAt != null &&
-      attempt.resultsPublishedAt != null &&
       attempt.scoreRecord?.publishedAt != null
     );
   }
@@ -428,34 +444,52 @@ export class StudentService {
 
     const exam = await this.prisma.exam.findUnique({
       where: { id: examId },
-      include: { paper: { include: { paperQuestions: true } } },
+      include: {
+        sessions: true,
+        paper: { include: { paperQuestions: true } },
+      },
     });
     if (!exam) throw new NotFoundException('Exam not found');
-    if (exam.status !== 'IN_PROGRESS') {
-      if (exam.status === 'PUBLISHED') {
-        throw new BadRequestException('Exam has not started yet');
-      }
-      if (exam.status === 'PENDING_GRADING' || exam.status === 'COMPLETED') {
-        throw new BadRequestException('Exam has ended');
-      }
-      throw new BadRequestException('Exam is not available for taking');
+
+    if (exam.closedAt || exam.status === 'COMPLETED') {
+      throw new BadRequestException({
+        code: 'EXAM_CLOSED',
+        message: 'This exam has been closed by the administrator',
+      });
     }
 
     const window = await this.getParticipantWindow(examId, userId);
     const startTime = window.startTime ?? exam.startTime;
     const endTime = window.endTime ?? exam.endTime;
     const now = new Date();
+
     if (!startTime || !endTime) {
-      throw new BadRequestException('Exam time window is not configured');
+      throw new BadRequestException({
+        code: 'EXAM_NOT_AVAILABLE',
+        message: 'Exam time window is not configured',
+      });
     }
-    if (now < startTime) {
-      throw new BadRequestException('Exam has not started yet');
-    }
+
     if (now > endTime) {
-      throw new BadRequestException('Exam has ended');
+      throw new BadRequestException({
+        code: 'EXAM_ENDED',
+        message: 'This exam has already ended. You cannot start it.',
+      });
     }
-    if (!isWithinExamWindow(now, { startTime, endTime })) {
-      throw new BadRequestException('Outside exam time window');
+
+    if (now < startTime) {
+      throw new BadRequestException({
+        code: 'EXAM_NOT_STARTED',
+        message: 'This exam has not started yet.',
+      });
+    }
+
+    const startableStatuses = new Set(['IN_PROGRESS', 'PUBLISHED']);
+    if (!startableStatuses.has(exam.status)) {
+      throw new BadRequestException({
+        code: 'EXAM_NOT_AVAILABLE',
+        message: `Exam status is ${exam.status}. Cannot start.`,
+      });
     }
 
     const existing = await this.prisma.examAttempt.findFirst({
@@ -470,7 +504,7 @@ export class StudentService {
         durationMinutes: exam.durationMinutes,
         sessionEnd: endTime,
       });
-      return existing;
+      return this.getAttempt(existing.id, userId);
     }
 
     const { questionOrderJson, optionOrdersJson } = buildAttemptDisplayOrder(
@@ -522,7 +556,7 @@ export class StudentService {
       sessionEnd: endTime,
     });
 
-    return attempt;
+    return this.getAttempt(attempt.id, userId);
   }
 
   async getAttempt(attemptId: string, userId: string) {
@@ -869,14 +903,14 @@ export class StudentService {
       };
     }
 
-    if (!score.publishedAt || !exam?.resultsPublishedAt) {
+    if (!score.publishedAt) {
       return {
         attemptId,
         examTitle: exam?.title,
         status: 'pending',
         graded: false,
         submittedAt: attempt.submittedAt,
-        message: 'Results not yet published',
+        message: 'Results not yet published by administrator',
       };
     }
 

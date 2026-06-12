@@ -12,7 +12,7 @@ export class UsersController {
   constructor(private usersService: UsersService) {}
 
   @Get('departments')
-  @RequirePermissions(PERMISSIONS.EXAM_MANAGE)
+  @RequirePermissions(PERMISSIONS.USER_MANAGE)
   findDepartments() {
     return this.usersService.findDepartments();
   }

@@ -16,6 +16,7 @@ import {
   formatCorrectAnswerForDisplay,
 } from '../../common/utils/answer-display.util';
 import { AutoGradeService } from '../student/auto-grade.service';
+import { ModifyScoreDto } from '../scores/dto/modify-score.dto';
 import { RegradeAttemptDto, ResultsQueryDto } from './dto/results.dto';
 
 @Injectable()
@@ -270,6 +271,62 @@ export class ResultsService {
       ...this.mapAttemptRow(attempt),
       questions,
     };
+  }
+
+  async modifyAttemptScore(attemptId: string, dto: ModifyScoreDto, user: RequestUser) {
+    const isAdmin =
+      user.roles.includes(ROLES.SUPER_ADMIN) ||
+      user.roles.includes(ROLES.ADMIN) ||
+      user.permissions.includes('result:correct');
+
+    if (!isAdmin) {
+      throw new ForbiddenException('Only administrators can modify scores');
+    }
+
+    if (!dto.reason?.trim()) {
+      throw new BadRequestException('Reason required for score modification');
+    }
+
+    const attempt = await this.prisma.examAttempt.findUnique({
+      where: { id: attemptId },
+      include: {
+        scoreRecord: true,
+        exam: { select: { passScore: true, title: true } },
+      },
+    });
+    if (!attempt) throw new NotFoundException('Attempt not found');
+    if (!attempt.submittedAt) {
+      throw new BadRequestException('Attempt has not been submitted');
+    }
+    if (!attempt.scoreRecord) {
+      throw new BadRequestException('No score record found for this attempt');
+    }
+
+    const oldScore = Number(attempt.scoreRecord.totalScore);
+    const newScore = dto.newScore;
+    const passScore = Number(attempt.exam.passScore);
+
+    await this.prisma.scoreRecord.update({
+      where: { attemptId },
+      data: {
+        totalScore: newScore,
+        result: newScore >= passScore ? 'PASS' : 'FAIL',
+      },
+    });
+
+    await this.auditService.log({
+      actorId: user.userId,
+      actorRole: user.roles.join(','),
+      action: 'MODIFY_SCORE',
+      objectType: 'AnswerRecord',
+      objectId: attemptId,
+      objectName: attempt.exam.title,
+      beforeData: { score: oldScore },
+      afterData: { score: newScore, reason: dto.reason.trim() },
+      reason: dto.reason.trim(),
+    });
+
+    return { modified: true, attemptId, oldScore, newScore };
   }
 
   async regradeAttempt(attemptId: string, dto: RegradeAttemptDto, user: RequestUser) {

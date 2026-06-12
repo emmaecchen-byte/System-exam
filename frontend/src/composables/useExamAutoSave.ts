@@ -5,6 +5,7 @@ import {
   type AnswerPayload,
   type AttemptDetail,
 } from '@/api/candidate';
+import { getApiBaseUrl, needsTunnelBypassHeader } from '@/config/apiBase';
 
 export interface ExamAutoSaveApi {
   autoSaveAttempt: (
@@ -17,13 +18,12 @@ export interface ExamAutoSaveApi {
   ) => Promise<unknown>;
 }
 import { buildSavePayload } from '@/utils/examAnswers';
-import { clearExamDraft, loadExamDraft, saveExamDraft, type ExamDraft } from '@/utils/examDraftStorage';
+import { clearExamDraft, saveExamDraft, type ExamDraft } from '@/utils/examDraftStorage';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error' | 'offline' | 'queued';
 
 const AUTO_SAVE_INTERVAL_MS = 30_000;
 const SAVED_INDICATOR_MS = 3_000;
-const LOCAL_DEBOUNCE_MS = 500;
 
 interface UseExamAutoSaveOptions {
   attemptId: string;
@@ -34,6 +34,8 @@ interface UseExamAutoSaveOptions {
   currentIndex: Ref<number>;
   disabled: Ref<boolean>;
   api?: ExamAutoSaveApi;
+  /** API route prefix for keepalive unload saves (default: candidate). */
+  apiPathPrefix?: 'student' | 'candidate';
 }
 
 const defaultApi: ExamAutoSaveApi = { autoSaveAttempt, saveAttemptAnswers };
@@ -48,9 +50,9 @@ export function useExamAutoSave(options: UseExamAutoSaveOptions) {
   let lastSyncedSnapshot = '';
   let autoSaveTimer: ReturnType<typeof setInterval> | undefined;
   let savedIndicatorTimer: ReturnType<typeof setTimeout> | undefined;
-  let localDebounceTimer: ReturnType<typeof setTimeout> | undefined;
   let saveInFlight = false;
   let pendingQueue = false;
+  const apiPathPrefix = options.apiPathPrefix ?? 'candidate';
 
   function snapshot() {
     return JSON.stringify({
@@ -93,11 +95,8 @@ export function useExamAutoSave(options: UseExamAutoSaveOptions) {
     await saveExamDraft(draft);
   }
 
-  function scheduleLocalPersist() {
-    clearTimeout(localDebounceTimer);
-    localDebounceTimer = setTimeout(() => {
-      void persistLocal();
-    }, LOCAL_DEBOUNCE_MS);
+  function getAuthToken(): string | null {
+    return localStorage.getItem('accessToken') ?? sessionStorage.getItem('accessToken');
   }
 
   function showSavedBriefly() {
@@ -161,32 +160,39 @@ export function useExamAutoSave(options: UseExamAutoSaveOptions) {
 
   function onAnswerChange() {
     markDirty();
-    scheduleLocalPersist();
   }
 
   async function saveOnNavigation() {
     if (answersChanged.value) {
       await saveToServer(false);
-    } else {
-      await persistLocal();
     }
   }
 
-  async function mergeDraftFromLocal(server: AttemptDetail) {
-    const local = await loadExamDraft(options.attemptId);
-    if (!local) return;
+  /** Fire-and-forget save when the page is closing (keepalive fetch). */
+  function saveOnPageHide() {
+    if (options.disabled.value || !options.attempt.value || !answersChanged.value) return;
 
-    const serverTime = server.lastAutoSavedAt ? new Date(server.lastAutoSavedAt).getTime() : 0;
-    const localTime = new Date(local.savedAt).getTime();
+    const token = getAuthToken();
+    if (!token) return;
 
-    if (localTime > serverTime) {
-      Object.assign(options.answers, local.answers);
-      Object.assign(options.marked, local.marked);
-      if (local.visited?.length) options.visited.value = new Set(local.visited);
-      if (typeof local.currentIndex === 'number') options.currentIndex.value = local.currentIndex;
-      answersChanged.value = true;
-      hasUnsavedChanges.value = true;
+    const payload = buildPayload();
+    const url = `${getApiBaseUrl()}/${apiPathPrefix}/attempts/${options.attemptId}/auto-save`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    };
+    if (needsTunnelBypassHeader()) {
+      headers['Bypass-Tunnel-Reminder'] = 'true';
     }
+
+    fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => {
+      /* best-effort — server is source of truth on next load */
+    });
   }
 
   async function clearDraft() {
@@ -214,7 +220,6 @@ export function useExamAutoSave(options: UseExamAutoSaveOptions) {
   onUnmounted(() => {
     clearInterval(autoSaveTimer);
     clearTimeout(savedIndicatorTimer);
-    clearTimeout(localDebounceTimer);
     window.removeEventListener('online', onOnline);
     window.removeEventListener('offline', onOffline);
   });
@@ -228,7 +233,7 @@ export function useExamAutoSave(options: UseExamAutoSaveOptions) {
     onAnswerChange,
     saveToServer,
     saveOnNavigation,
-    mergeDraftFromLocal,
+    saveOnPageHide,
     clearDraft,
     persistLocal,
   };

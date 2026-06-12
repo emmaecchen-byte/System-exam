@@ -69,6 +69,7 @@ function onVisibilityChange() {
 
   if (document.hidden) {
     tabLeftAt = Date.now();
+    void autoSave.saveToServer(true);
     sendAuditEvent({
       eventType: 'page_leave',
       timestamp: new Date().toISOString(),
@@ -88,14 +89,40 @@ function onVisibilityChange() {
   }
 }
 
-function onClipboardAudit(event: ClipboardEvent) {
+function preventCopy(e: ClipboardEvent) {
   if (!isExamInProgress()) return;
-  const action = event.type as 'copy' | 'cut' | 'paste';
+  e.preventDefault();
+  ElMessage.warning(t('student.copyDisabled'));
   sendAuditEvent({
     eventType: 'copy_attempt',
     timestamp: new Date().toISOString(),
-    metadata: { action },
+    metadata: { action: 'copy' },
   });
+  return false;
+}
+
+function preventPaste(e: ClipboardEvent) {
+  if (!isExamInProgress()) return;
+  e.preventDefault();
+  ElMessage.warning(t('student.pasteDisabled'));
+  sendAuditEvent({
+    eventType: 'copy_attempt',
+    timestamp: new Date().toISOString(),
+    metadata: { action: 'paste' },
+  });
+  return false;
+}
+
+function preventCut(e: ClipboardEvent) {
+  if (!isExamInProgress()) return;
+  e.preventDefault();
+  ElMessage.warning(t('student.cutDisabled'));
+  sendAuditEvent({
+    eventType: 'copy_attempt',
+    timestamp: new Date().toISOString(),
+    metadata: { action: 'cut' },
+  });
+  return false;
 }
 
 const autoSave = useExamAutoSave({
@@ -107,6 +134,7 @@ const autoSave = useExamAutoSave({
   currentIndex,
   disabled: examLocked,
   api: studentExamApi,
+  apiPathPrefix: 'student',
 });
 
 const questions = computed(() => attempt.value?.questions ?? []);
@@ -238,10 +266,16 @@ function onTouchEnd(event: TouchEvent) {
 
 function beforeUnloadHandler(event: BeforeUnloadEvent) {
   if (!isExamInProgress()) return;
+  autoSave.saveOnPageHide();
   const message = t('student.leaveExamWarning');
   event.preventDefault();
   event.returnValue = message;
   return message;
+}
+
+function onPageHide() {
+  if (!isExamInProgress()) return;
+  autoSave.saveOnPageHide();
 }
 
 function onResize() {
@@ -332,10 +366,11 @@ watch(tabBlocked, (blocked) => {
 
 onMounted(async () => {
   document.addEventListener('visibilitychange', onVisibilityChange);
-  document.addEventListener('copy', onClipboardAudit);
-  document.addEventListener('cut', onClipboardAudit);
-  document.addEventListener('paste', onClipboardAudit);
+  document.addEventListener('copy', preventCopy);
+  document.addEventListener('cut', preventCut);
+  document.addEventListener('paste', preventPaste);
   window.addEventListener('beforeunload', beforeUnloadHandler);
+  window.addEventListener('pagehide', onPageHide);
   window.addEventListener('resize', onResize);
 
   if (tabBlocked.value) {
@@ -354,13 +389,12 @@ onMounted(async () => {
     attempt.value = data;
     currentIndex.value = data.currentQuestionIndex ?? 0;
 
+    // Server is the source of truth — restore all saved answers from the database.
     const state = initAnswerState(data.questions);
     Object.assign(answers, state.answers);
     Object.assign(marked, state.marked);
     visited.value = state.visited;
     autoSave.markSynced();
-
-    await autoSave.mergeDraftFromLocal(data);
     markVisited(currentIndex.value);
 
     startTimer(data.remainingSeconds);
@@ -377,10 +411,11 @@ onUnmounted(() => {
   clearTimeout(redirectTimer);
   saveToast?.close();
   document.removeEventListener('visibilitychange', onVisibilityChange);
-  document.removeEventListener('copy', onClipboardAudit);
-  document.removeEventListener('cut', onClipboardAudit);
-  document.removeEventListener('paste', onClipboardAudit);
+  document.removeEventListener('copy', preventCopy);
+  document.removeEventListener('cut', preventCut);
+  document.removeEventListener('paste', preventPaste);
   window.removeEventListener('beforeunload', beforeUnloadHandler);
+  window.removeEventListener('pagehide', onPageHide);
   window.removeEventListener('resize', onResize);
 });
 </script>

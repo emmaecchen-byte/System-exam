@@ -18,7 +18,7 @@ declare module 'vue-router' {
 }
 
 const superAdminAndAdmin: RoleCode[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN];
-const examManageRoles: RoleCode[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.EXAM_ADMIN];
+const examManageRoles: RoleCode[] = [ROLES.ADMIN, ROLES.EXAM_ADMIN];
 const resultsRoles: RoleCode[] = [
   ROLES.EXAM_ADMIN,
   ROLES.SUPER_ADMIN,
@@ -116,7 +116,11 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'categories',
         component: () => import('@/views/admin/CategoriesView.vue'),
-        meta: { titleKey: 'meta.categories', roles: superAdminAndAdmin },
+        meta: {
+          titleKey: 'meta.categories',
+          roles: [ROLES.ADMIN],
+          permission: 'category:manage',
+        },
       },
       {
         path: 'results',
@@ -126,32 +130,56 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'questions',
         component: () => import('@/views/admin/QuestionsView.vue'),
-        meta: { titleKey: 'meta.questionBank' },
+        meta: {
+          titleKey: 'meta.questionBank',
+          roles: [ROLES.ADMIN],
+          permission: 'question:manage',
+        },
       },
       {
         path: 'papers',
         component: () => import('@/views/admin/PapersView.vue'),
-        meta: { titleKey: 'meta.papers' },
+        meta: {
+          titleKey: 'meta.papers',
+          roles: [ROLES.ADMIN],
+          permission: 'paper:manage',
+        },
       },
       {
         path: 'papers/:id/edit',
         component: () => import('@/views/admin/PaperEditView.vue'),
-        meta: { titleKey: 'meta.editPaper' },
+        meta: {
+          titleKey: 'meta.editPaper',
+          roles: [ROLES.ADMIN],
+          permission: 'paper:manage',
+        },
       },
       {
         path: 'exams',
         component: () => import('@/views/admin/ExamsView.vue'),
-        meta: { titleKey: 'meta.exams', permission: 'exam:manage' },
+        meta: {
+          titleKey: 'meta.exams',
+          roles: [ROLES.ADMIN],
+          permission: 'exam:manage',
+        },
       },
       {
         path: 'exams/new/edit',
         component: () => import('@/views/admin/ExamEditView.vue'),
-        meta: { titleKey: 'meta.createExam', permission: 'exam:manage' },
+        meta: {
+          titleKey: 'meta.createExam',
+          roles: [ROLES.ADMIN],
+          permission: 'exam:manage',
+        },
       },
       {
         path: 'exams/:id/edit',
         component: () => import('@/views/admin/ExamEditView.vue'),
-        meta: { titleKey: 'meta.editExam', permission: 'exam:manage' },
+        meta: {
+          titleKey: 'meta.editExam',
+          roles: [ROLES.ADMIN],
+          permission: 'exam:manage',
+        },
       },
       {
         path: 'exams/:examId/sessions',
@@ -189,7 +217,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/layouts/ExamAdminLayout.vue'),
     meta: {
       requiresAuth: true,
-      roles: [ROLES.EXAM_ADMIN, ROLES.SUPER_ADMIN],
+      roles: [ROLES.EXAM_ADMIN],
       permission: 'exam:manage',
     },
     children: [
@@ -225,7 +253,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/layouts/ExamAdminLayout.vue'),
     meta: {
       requiresAuth: true,
-      roles: [ROLES.EXAM_ADMIN, ROLES.SUPER_ADMIN],
+      roles: [ROLES.EXAM_ADMIN],
       permission: 'result:view',
     },
     children: [

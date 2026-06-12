@@ -1,0 +1,1 @@
+-- SQLite stores AuditAction as TEXT; MODIFY_SCORE is a new allowed value (no DDL change required).

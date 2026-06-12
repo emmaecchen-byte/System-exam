@@ -149,7 +149,7 @@ cd backend && npx prisma migrate deploy && npm run prisma:seed
 - [ ] Exam participant assignment
 - [ ] Result publication workflow
 - [ ] Redis integration for exam timer and auto-save throttling
-- [ ] File upload for paper attachments (Word/PDF)
+- [x] File upload for paper attachments (Word/PDF)
 
 ## Question Import Template
 

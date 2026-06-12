@@ -33,12 +33,12 @@ const allMenus: MenuItem[] = [
   { path: '/admin/users', labelKey: 'nav.users', permission: 'user:manage' },
   { path: '/admin/departments', labelKey: 'nav.departments', permission: 'user:manage' },
   { path: '/admin/roles', labelKey: 'nav.roles', permission: 'role:manage' },
-  { path: '/admin/questions', labelKey: 'nav.questionBank', roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
-  { path: '/admin/papers', labelKey: 'nav.papers', roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
-  { path: '/admin/exams', labelKey: 'nav.exams', roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
+  { path: '/admin/questions', labelKey: 'nav.questionBank', roles: [ROLES.ADMIN] },
+  { path: '/admin/papers', labelKey: 'nav.papers', roles: [ROLES.ADMIN] },
+  { path: '/admin/exams', labelKey: 'nav.exams', roles: [ROLES.ADMIN], permission: 'exam:manage' },
   { path: '/admin/reports', labelKey: 'nav.reports', permission: 'result:view' },
   { path: '/admin/results', labelKey: 'nav.resultsReports', permission: 'result:view' },
-  { path: '/admin/categories', labelKey: 'nav.categories', roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
+  { path: '/admin/categories', labelKey: 'nav.categories', roles: [ROLES.ADMIN] },
   { path: '/admin/audit-logs', labelKey: 'nav.auditLogs', roles: [ROLES.SUPER_ADMIN] },
 ];
 

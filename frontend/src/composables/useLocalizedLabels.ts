@@ -93,6 +93,8 @@ export function useLocalizedLabels() {
       Upcoming: 'labels.candidate.upcoming',
       'Session ended': 'labels.candidate.sessionEnded',
       Unavailable: 'labels.candidate.unavailable',
+      Closed: 'labels.candidate.adminClosed',
+      'Closed by administrator': 'labels.candidate.closedByAdmin',
     };
     if (fallback && fallbackMap[fallback]) return t(fallbackMap[fallback]);
 
@@ -103,6 +105,7 @@ export function useLocalizedLabels() {
       AWAITING_PUBLISH: 'labels.candidate.awaitingPublication',
       GRADED_PUBLISHED: 'labels.candidate.gradedPublished',
       NOT_TAKEN: 'labels.candidate.notTaken',
+      ADMIN_CLOSED: 'labels.candidate.adminClosed',
     };
     if (map[candidateState]) return t(map[candidateState]);
     return fallback ?? candidateState;
@@ -117,6 +120,7 @@ export function useLocalizedLabels() {
       'Awaiting result publication': 'labels.candidate.awaitingPublication',
       'View result': 'student.viewResult',
       'Not yet open': 'labels.candidate.notYetOpen',
+      'Closed by administrator': 'labels.candidate.closedByAdmin',
     };
     if (actionLabel === '—') return '—';
     return map[actionLabel] ? t(map[actionLabel]) : actionLabel;

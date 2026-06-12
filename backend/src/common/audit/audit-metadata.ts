@@ -43,6 +43,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   SUBMIT: 'Submit',
   EXPORT: 'Export',
   CORRECT: 'Correct / Regrade',
+  MODIFY_SCORE: 'Modify Score',
   START_EXAM: 'Start Exam',
   AUTO_SAVE: 'Auto-Save',
   TIMEOUT_SUBMIT: 'Timeout Submit',
@@ -62,7 +63,7 @@ export function resolveActionCategory(objectType: string, action: AuditAction): 
   }
   if (action === 'EXPORT' && objectType === 'AuditLog') return 'system';
   if (action === 'EXPORT') return 'results';
-  if (action === 'CORRECT') return 'results';
+  if (action === 'CORRECT' || action === 'MODIFY_SCORE') return 'results';
   if (action === 'GRADE' || action === 'SUBMIT') return 'grading';
   if (action === 'LOGIN' || action === 'LOGIN_FAILED' || action === 'LOGOUT') {
     return 'authentication';

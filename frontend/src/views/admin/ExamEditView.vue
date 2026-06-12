@@ -3,7 +3,8 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Plus, QuestionFilled } from '@element-plus/icons-vue';
+import { Plus } from '@element-plus/icons-vue';
+import ExamForm from '@/views/admin/ExamForm.vue';
 import { fetchCategoryOptions } from '@/api/categories';
 import {
   addSessionParticipants,
@@ -31,13 +32,16 @@ import { useLocalizedLabels } from '@/composables/useLocalizedLabels';
 import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
 import QrCodeDialog from '@/components/QrCodeDialog.vue';
 import type { QrCodeStatus } from '@/api/exams';
+import { useAuthStore } from '@/stores/auth';
+import { ROLES } from '@/constants/roles';
 
 const { t } = useI18n();
 const { examStatus, sessionStatus } = useLocalizedLabels();
-const { categoryName, departmentName, examTitle, paperLabel, personName } = useSeedDataLabels();
+const { departmentName, examTitle, personName } = useSeedDataLabels();
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 const examBasePath = useExamListBasePath();
 // Static route is `new/edit` (no :id param), so params.id is undefined — not the string "new".
 const isNew = computed(() => route.path.endsWith('/new/edit'));
@@ -327,11 +331,37 @@ async function publish() {
   }
 }
 
+const canCloseExam = computed(
+  () =>
+    auth.hasRole(ROLES.ADMIN) &&
+    exam.value &&
+    (exam.value.status === 'PUBLISHED' || exam.value.status === 'IN_PROGRESS'),
+);
+
+const closing = ref(false);
+
 async function closeExamEarly() {
-  if (!examId.value) return;
-  await closeExam(examId.value);
-  ElMessage.success(t('examEdit.closedMsg'));
-  await loadExam();
+  if (!examId.value || !canCloseExam.value) return;
+  try {
+    await ElMessageBox.confirm(
+      t('examEdit.closeExamConfirm'),
+      t('examEdit.closeExamTitle'),
+      { type: 'warning', confirmButtonText: t('examEdit.closeExam'), confirmButtonClass: 'el-button--danger' },
+    );
+  } catch {
+    return;
+  }
+  closing.value = true;
+  try {
+    const { data } = await closeExam(examId.value);
+    ElMessage.success(data.message ?? t('examEdit.closedMsg'));
+    await loadExam();
+  } catch (err: unknown) {
+    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+    ElMessage.error(msg ?? t('examEdit.closeFailed'));
+  } finally {
+    closing.value = false;
+  }
 }
 
 const canManageResults = computed(
@@ -429,6 +459,15 @@ watch(
         <h2>{{ isNew ? t('examEdit.newExam') : examTitle(exam?.id, exam?.title) }}</h2>
         <div v-if="exam" class="meta">
           <el-tag>{{ examStatus(exam.status) }}</el-tag>
+          <el-button
+            v-if="canCloseExam"
+            type="danger"
+            size="small"
+            :loading="closing"
+            @click="closeExamEarly"
+          >
+            {{ t('examEdit.closeExam') }}
+          </el-button>
           <el-tag v-if="exam.resultsPublished" type="success">{{ t('examEdit.resultsPublishedBadge') }}</el-tag>
           <el-tag v-else-if="canManageResults" type="warning">{{ t('examEdit.resultsUnpublishedBadge') }}</el-tag>
           <span>{{ t('examEdit.sessionCount', { count: exam.sessionCount }) }}</span>
@@ -507,72 +546,16 @@ watch(
     <el-tabs v-if="examId || isNew" :key="examId ?? 'new'" v-model="activeTab" @tab-change="onTabChange">
       <el-tab-pane :label="t('examEdit.tabConfig')" name="config">
         <el-card shadow="never">
-          <el-form label-width="180px" :disabled="exam && !exam.isEditable">
-            <el-form-item :label="t('examEdit.title')" required>
-              <el-input v-model="form.title" />
-            </el-form-item>
-            <el-form-item :label="t('common.description')">
-              <el-input v-model="form.description" type="textarea" :rows="2" />
-            </el-form-item>
-            <el-form-item :label="t('examEdit.category')" required>
-              <el-select v-model="form.categoryId" filterable style="width: 100%">
-                <el-option v-for="c in categories" :key="c.id" :label="categoryName(c.id, c.name)" :value="c.id" />
-              </el-select>
-            </el-form-item>
-            <el-form-item :label="t('examEdit.paperPublished')" required>
-              <el-select v-model="form.paperId" filterable style="width: 100%">
-                <el-option v-for="p in papers" :key="p.id" :label="paperLabel(p.label)" :value="p.id" />
-              </el-select>
-              <p v-if="selectedPaper" class="hint">
-                {{ t('examEdit.paperTotal', { score: selectedPaper.totalScore }) }}
-              </p>
-            </el-form-item>
-            <el-form-item :label="t('examEdit.passScore')" required>
-              <el-input-number v-model="form.passScore" :min="1" :max="selectedPaper?.totalScore ?? 999" />
-            </el-form-item>
-            <el-form-item :label="t('examEdit.duration')" required>
-              <el-input-number v-model="form.durationMinutes" :min="1" :max="480" />
-            </el-form-item>
-            <el-form-item :label="t('examEdit.allowRetake')">
-              <el-switch v-model="form.allowRetake" />
-            </el-form-item>
-            <el-form-item v-if="form.allowRetake" :label="t('examEdit.maxAttempts')">
-              <el-input-number v-model="form.maxAttempts" :min="2" :max="10" />
-            </el-form-item>
-            <el-form-item>
-              <template #label>
-                <span class="inline-flex items-center gap-1">
-                  {{ t('examEdit.randomQuestionOrder') }}
-                  <el-tooltip :content="t('examEdit.randomOrderTooltip')" placement="top">
-                    <el-icon class="text-gray-400"><QuestionFilled /></el-icon>
-                  </el-tooltip>
-                </span>
-              </template>
-              <el-switch v-model="form.randomQuestionOrder" />
-            </el-form-item>
-            <el-form-item>
-              <template #label>
-                <span class="inline-flex items-center gap-1">
-                  {{ t('examEdit.randomOptionOrder') }}
-                  <el-tooltip :content="t('examEdit.randomOrderTooltip')" placement="top">
-                    <el-icon class="text-gray-400"><QuestionFilled /></el-icon>
-                  </el-tooltip>
-                </span>
-              </template>
-              <el-switch v-model="form.randomOptionOrder" />
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" :loading="saving" @click="saveExam">{{ t('examEdit.saveExam') }}</el-button>
-              <el-button v-if="exam?.status === 'DRAFT'" type="success" @click="publish">{{ t('examEdit.publish') }}</el-button>
-              <el-button
-                v-if="exam?.status === 'PUBLISHED' || exam?.status === 'IN_PROGRESS'"
-                type="warning"
-                @click="closeExamEarly"
-              >
-                {{ t('examEdit.closeEarly') }}
-              </el-button>
-            </el-form-item>
-          </el-form>
+          <ExamForm
+            v-model="form"
+            :disabled="Boolean(exam && !exam.isEditable)"
+            :saving="saving"
+            :categories="categories"
+            :papers="papers"
+            :show-publish="exam?.status === 'DRAFT'"
+            @save="saveExam"
+            @publish="publish"
+          />
         </el-card>
       </el-tab-pane>
 

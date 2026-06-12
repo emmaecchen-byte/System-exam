@@ -100,9 +100,10 @@ function questionTypeLabel(type: string) {
               : t('student.resultsNotAvailable')
           "
           :sub-title="
-            result.status === 'pending'
+            result.message ??
+            (result.status === 'pending'
               ? t('student.resultsPendingCheckBack')
-              : result.message
+              : undefined)
           "
         >
           <template v-if="result.submittedAt" #extra>

@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
 import { Download, Refresh, Search } from '@element-plus/icons-vue';
 import {
-  AuditLogRow,
+  type AuditLogRow,
   exportAuditLogs,
   fetchAuditActions,
   fetchAuditActors,
@@ -13,18 +13,13 @@ import {
 import { useAuditLabels } from '@/composables/useAuditLabels';
 
 const { t } = useI18n();
-const {
-  auditAction,
-  auditObjectType,
-  auditActorRole,
-  auditActorName,
-} = useAuditLabels();
+const { auditAction, auditObjectType, auditActorRole, auditActorName } = useAuditLabels();
 
 const loading = ref(false);
 const exporting = ref(false);
 const logs = ref<AuditLogRow[]>([]);
 const detailRow = ref<AuditLogRow | null>(null);
-const drawerVisible = ref(false);
+const dialogVisible = ref(false);
 
 const filterOptions = reactive({
   actions: [] as Array<{ value: string; label: string; category: string }>,
@@ -45,14 +40,27 @@ const appliedFilters = reactive(defaultFilters());
 
 const pagination = reactive({ page: 1, pageSize: 50, total: 0 });
 
+const DEVICE_TRUNCATE_LEN = 50;
+
 function formatDate(value: string) {
   return new Date(value).toLocaleString();
 }
 
-function formatDeviceInfo(row: AuditLogRow, maxLen = 36) {
-  if (!row.deviceInfo) return row.userAgent ? truncate(row.userAgent, maxLen) : '—';
-  const text = [row.deviceInfo.browser, row.deviceInfo.os].filter(Boolean).join(' / ');
-  return truncate(text || '—', maxLen);
+function truncate(value: string, maxLen: number) {
+  if (value.length <= maxLen) return value;
+  return `${value.slice(0, maxLen)}…`;
+}
+
+function deviceInfoText(row: AuditLogRow) {
+  if (row.deviceInfo?.browser || row.deviceInfo?.os) {
+    return [row.deviceInfo.browser, row.deviceInfo.os].filter(Boolean).join(' / ');
+  }
+  return row.userAgent ?? '';
+}
+
+function formatDeviceInfo(row: AuditLogRow) {
+  const text = deviceInfoText(row);
+  return text ? truncate(text, DEVICE_TRUNCATE_LEN) : '—';
 }
 
 function fullDeviceInfo(row: AuditLogRow) {
@@ -61,10 +69,6 @@ function fullDeviceInfo(row: AuditLogRow) {
   if (row.deviceInfo?.os) parts.push(`OS: ${row.deviceInfo.os}`);
   if (row.userAgent) parts.push(`User Agent: ${row.userAgent}`);
   return parts.length ? parts.join('\n') : '—';
-}
-
-function truncate(value: string, maxLen: number) {
-  return value.length > maxLen ? `${value.slice(0, maxLen)}…` : value;
 }
 
 function formatJson(data: unknown) {
@@ -126,7 +130,7 @@ function resetFilters() {
 
 function openDetail(row: AuditLogRow) {
   detailRow.value = row;
-  drawerVisible.value = true;
+  dialogVisible.value = true;
 }
 
 function onPageChange(page: number) {
@@ -165,9 +169,6 @@ onMounted(async () => {
         <h2>{{ t('audit.title') }}</h2>
         <p class="subtitle">{{ t('audit.subtitle') }}</p>
       </div>
-      <el-button type="primary" :icon="Download" :loading="exporting" @click="handleExport">
-        {{ t('audit.exportCsv') }}
-      </el-button>
     </div>
 
     <el-alert
@@ -191,6 +192,7 @@ onMounted(async () => {
             value-format="YYYY-MM-DDTHH:mm:ss.SSSZ"
           />
         </el-form-item>
+
         <el-form-item :label="t('audit.filterActor')">
           <el-select
             v-model="draftFilters.actorId"
@@ -200,13 +202,14 @@ onMounted(async () => {
             style="width: 200px"
           >
             <el-option
-              v-for="a in filterOptions.actors"
-              :key="a.id"
-              :label="`${auditActorName(a.name, a.employeeNo)} (${a.employeeNo})`"
-              :value="a.id"
+              v-for="actor in filterOptions.actors"
+              :key="actor.id"
+              :label="`${auditActorName(actor.name, actor.employeeNo)} (${actor.employeeNo})`"
+              :value="actor.id"
             />
           </el-select>
         </el-form-item>
+
         <el-form-item :label="t('audit.filterAction')">
           <el-select
             v-model="draftFilters.action"
@@ -216,28 +219,31 @@ onMounted(async () => {
             style="width: 200px"
           >
             <el-option
-              v-for="a in filterOptions.actions"
-              :key="a.value"
-              :label="auditAction(a.value, a.label)"
-              :value="a.value"
+              v-for="action in filterOptions.actions"
+              :key="action.value"
+              :label="auditAction(action.value, action.label)"
+              :value="action.value"
             />
           </el-select>
         </el-form-item>
-        <el-form-item :label="t('audit.filterObject')">
+
+        <el-form-item :label="t('audit.colObjectType')">
           <el-select
             v-model="draftFilters.objectType"
             clearable
+            filterable
             :placeholder="t('audit.allTypes')"
             style="width: 160px"
           >
             <el-option
-              v-for="ot in filterOptions.objectTypes"
-              :key="ot"
-              :label="auditObjectType(ot)"
-              :value="ot"
+              v-for="objectType in filterOptions.objectTypes"
+              :key="objectType"
+              :label="auditObjectType(objectType)"
+              :value="objectType"
             />
           </el-select>
         </el-form-item>
+
         <el-form-item :label="t('audit.filterSearch')">
           <el-input
             v-model="draftFilters.search"
@@ -251,9 +257,17 @@ onMounted(async () => {
             </template>
           </el-input>
         </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="applyFilters">{{ t('audit.applyFilters') }}</el-button>
-          <el-button :icon="Refresh" @click="resetFilters">{{ t('audit.resetFilters') }}</el-button>
+
+        <el-form-item class="filter-actions">
+          <el-button type="primary" @click="applyFilters">
+            {{ t('audit.applyFilters') }}
+          </el-button>
+          <el-button :icon="Refresh" @click="resetFilters">
+            {{ t('audit.resetFilters') }}
+          </el-button>
+          <el-button type="success" :icon="Download" :loading="exporting" @click="handleExport">
+            {{ t('audit.exportToCsv') }}
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -268,36 +282,44 @@ onMounted(async () => {
         class="audit-table"
         @row-click="openDetail"
       >
-        <el-table-column :label="t('audit.colTime')" width="170">
+        <el-table-column :label="t('audit.colTime')" width="170" prop="timestamp">
           <template #default="{ row }">{{ formatDate(row.timestamp) }}</template>
         </el-table-column>
+
         <el-table-column :label="t('audit.colActor')" min-width="130">
           <template #default="{ row }">
             {{ auditActorName(row.actorName, row.actorEmployeeNo) }}
           </template>
         </el-table-column>
+
         <el-table-column :label="t('audit.colRole')" width="130">
           <template #default="{ row }">{{ auditActorRole(row.actorRole) }}</template>
         </el-table-column>
-        <el-table-column :label="t('audit.colAction')" width="140">
+
+        <el-table-column :label="t('audit.colAction')" width="150">
           <template #default="{ row }">{{ auditAction(row.action, row.actionLabel) }}</template>
         </el-table-column>
+
         <el-table-column :label="t('audit.colObjectType')" width="130">
           <template #default="{ row }">{{ auditObjectType(row.objectType) }}</template>
         </el-table-column>
+
         <el-table-column :label="t('audit.objectId')" width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ row.objectId ?? '—' }}</template>
         </el-table-column>
+
         <el-table-column :label="t('audit.colIp')" width="120">
           <template #default="{ row }">{{ row.ipAddress ?? '—' }}</template>
         </el-table-column>
-        <el-table-column :label="t('audit.colDeviceInfo')" min-width="150">
+
+        <el-table-column :label="t('audit.colDeviceInfo')" min-width="180">
           <template #default="{ row }">
             <el-tooltip :content="fullDeviceInfo(row)" placement="top" :show-after="400">
               <span class="device-cell">{{ formatDeviceInfo(row) }}</span>
             </el-tooltip>
           </template>
         </el-table-column>
+
         <el-table-column :label="t('audit.reason')" min-width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ row.reason ?? '—' }}</template>
         </el-table-column>
@@ -316,11 +338,12 @@ onMounted(async () => {
       </div>
     </el-card>
 
-    <el-drawer
-      v-model="drawerVisible"
+    <el-dialog
+      v-model="dialogVisible"
       :title="t('audit.detailTitle')"
-      size="520px"
+      width="720px"
       destroy-on-close
+      class="audit-detail-dialog"
     >
       <template v-if="detailRow">
         <el-descriptions :column="1" border size="small" class="detail-desc">
@@ -345,24 +368,27 @@ onMounted(async () => {
           <el-descriptions-item :label="t('audit.colIp')">
             {{ detailRow.ipAddress ?? '—' }}
           </el-descriptions-item>
-          <el-descriptions-item :label="t('audit.fullDeviceInfo')">
-            <pre class="detail-pre">{{ fullDeviceInfo(detailRow) }}</pre>
-          </el-descriptions-item>
           <el-descriptions-item :label="t('audit.reason')">
-            {{ detailRow.reason ?? '—' }}
+            <span class="reason-full">{{ detailRow.reason ?? '—' }}</span>
           </el-descriptions-item>
         </el-descriptions>
 
-        <div v-if="detailRow.beforeData" class="json-block">
+        <div class="json-block">
+          <h4>{{ t('audit.fullDeviceInfo') }}</h4>
+          <pre class="detail-pre">{{ fullDeviceInfo(detailRow) }}</pre>
+        </div>
+
+        <div class="json-block">
           <h4>{{ t('audit.before') }}</h4>
           <pre class="detail-pre">{{ formatJson(detailRow.beforeData) }}</pre>
         </div>
-        <div v-if="detailRow.afterData" class="json-block">
+
+        <div class="json-block">
           <h4>{{ t('audit.after') }}</h4>
           <pre class="detail-pre">{{ formatJson(detailRow.afterData) }}</pre>
         </div>
       </template>
-    </el-drawer>
+    </el-dialog>
   </div>
 </template>
 
@@ -373,21 +399,13 @@ onMounted(async () => {
   gap: 16px;
 }
 
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
 .page-header h2 {
   margin: 0 0 4px;
 }
 
 .subtitle {
   margin: 0;
-  color: #6b7280;
+  color: var(--el-text-color-secondary);
   font-size: 14px;
 }
 
@@ -397,6 +415,12 @@ onMounted(async () => {
 
 .filters :deep(.el-form-item) {
   margin-bottom: 12px;
+}
+
+.filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .table-card {
@@ -425,6 +449,11 @@ onMounted(async () => {
   margin-bottom: 16px;
 }
 
+.reason-full {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .json-block {
   margin-top: 16px;
 }
@@ -438,7 +467,7 @@ onMounted(async () => {
 .detail-pre {
   margin: 0;
   padding: 12px;
-  background: #f3f4f6;
+  background: var(--el-fill-color-light);
   border-radius: 6px;
   font-size: 12px;
   line-height: 1.5;

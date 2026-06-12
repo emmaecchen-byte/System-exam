@@ -98,11 +98,29 @@ export function fetchExamStats(examId: string) {
   return api.get<ExamResultStats>(`/admin/exams/${examId}/stats`);
 }
 
-export function regradeAttempt(
+export function modifyAttemptScore(
   attemptId: string,
-  data: { reason: string; adjustedScore?: number },
+  data: { newScore: number; reason: string },
 ) {
   return api.post(`/admin/attempts/${attemptId}/regrade`, data);
+}
+
+export function fullRegradeAttempt(attemptId: string, data: { reason: string }) {
+  return api.post(`/admin/attempts/${attemptId}/full-regrade`, data);
+}
+
+/** @deprecated Use modifyAttemptScore or fullRegradeAttempt */
+export function regradeAttempt(
+  attemptId: string,
+  data: { reason: string; adjustedScore?: number; newScore?: number },
+) {
+  if (data.newScore !== undefined) {
+    return modifyAttemptScore(attemptId, { newScore: data.newScore, reason: data.reason });
+  }
+  if (data.adjustedScore !== undefined) {
+    return modifyAttemptScore(attemptId, { newScore: data.adjustedScore, reason: data.reason });
+  }
+  return fullRegradeAttempt(attemptId, { reason: data.reason });
 }
 
 export async function exportExamResults(examId: string) {
