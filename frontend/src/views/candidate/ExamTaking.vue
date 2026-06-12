@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { ArrowLeft, ArrowRight, Loading, Menu, WarningFilled } from '@element-plus/icons-vue';
-import type { AttemptDetail } from '@/api/candidate';
+import { fetchAttempt, type AttemptDetail } from '@/api/candidate';
 import {
   autoSaveStudentAttempt,
   fetchStudentAttempt,
@@ -24,6 +24,7 @@ import {
   paletteStatus,
 } from '@/utils/examAnswers';
 import { useSeedDataLabels } from '@/composables/useSeedDataLabels';
+import { getApiBaseUrl, needsTunnelBypassHeader } from '@/config/apiBase';
 
 const studentExamApi = {
   autoSaveAttempt: autoSaveStudentAttempt,
@@ -51,7 +52,20 @@ const visited = ref<Set<number>>(new Set());
 
 const { blocked: tabBlocked } = useExamTabLock(attemptId);
 
-let tabLeftAt: number | null = null;
+const isTabVisible = ref(true);
+const tabHiddenTime = ref<number | null>(null);
+const tabSwitchCount = ref(0);
+
+/** True once beforeunload/pagehide indicates the page is unloading (not a tab switch). */
+let isPageClosing = false;
+/** Prevents duplicate page_close audit events. */
+let pageCloseLogged = false;
+/** Prevents duplicate tab_hide audit events for a single hide cycle. */
+let tabHideLogged = false;
+let tabHideDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+let tabSwitchWarningShown = false;
+
+const TAB_HIDE_DEBOUNCE_MS = 200;
 
 function isExamInProgress() {
   return !isSubmitted.value && !autoSubmitting.value && !loading.value && Boolean(attempt.value);
@@ -64,29 +78,109 @@ function sendAuditEvent(payload: StudentAuditEventPayload) {
   });
 }
 
-function onVisibilityChange() {
-  if (!isExamInProgress()) return;
+/** keepalive fetch for audit events during page unload. */
+function sendAuditEventKeepalive(payload: StudentAuditEventPayload) {
+  if (!attempt.value) return;
+  const token = localStorage.getItem('accessToken') ?? sessionStorage.getItem('accessToken');
+  if (!token) return;
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
+  if (needsTunnelBypassHeader()) {
+    headers['Bypass-Tunnel-Reminder'] = 'true';
+  }
+
+  fetch(`${getApiBaseUrl()}/student/attempts/${attemptId}/audit-event`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+    keepalive: true,
+  }).catch(() => {
+    /* best-effort audit during unload */
+  });
+}
+
+function clearTabHideDebounce() {
+  if (tabHideDebounceTimer !== undefined) {
+    clearTimeout(tabHideDebounceTimer);
+    tabHideDebounceTimer = undefined;
+  }
+}
+
+function logPageClose() {
+  if (pageCloseLogged) return;
+  pageCloseLogged = true;
+  console.log('[Exam] Page leave detected - closing tab/browser');
+  sendAuditEventKeepalive({
+    eventType: 'page_close',
+    timestamp: new Date().toISOString(),
+    metadata: { reason: 'tab_or_browser_closed' },
+  });
+}
+
+function logTabHide() {
+  if (tabHideLogged || isPageClosing || pageCloseLogged || !isExamInProgress()) return;
+  tabHideLogged = true;
+  console.log('[Exam] Tab switch away - user changed to another tab');
+  sendAuditEvent({
+    eventType: 'tab_hide',
+    timestamp: new Date().toISOString(),
+    metadata: { hiddenDuration: null },
+  });
+}
+
+function maybeShowTabSwitchWarning() {
+  if (tabSwitchWarningShown || tabSwitchCount.value < 3) return;
+  tabSwitchWarningShown = true;
+  ElMessage.warning(t('student.tabSwitchWarning'));
+}
+
+function handleVisibilityChange() {
+  if (!isExamInProgress() || isPageClosing || pageCloseLogged) return;
 
   if (document.hidden) {
-    tabLeftAt = Date.now();
+    tabHiddenTime.value = Date.now();
+    isTabVisible.value = false;
+    tabHideLogged = false;
     void autoSave.saveToServer(true);
-    sendAuditEvent({
-      eventType: 'page_leave',
-      timestamp: new Date().toISOString(),
-      action: 'left',
-    });
+
+    clearTabHideDebounce();
+    tabHideDebounceTimer = setTimeout(() => {
+      tabHideDebounceTimer = undefined;
+      if (!isPageClosing && !pageCloseLogged && tabHiddenTime.value !== null) {
+        logTabHide();
+      }
+    }, TAB_HIDE_DEBOUNCE_MS);
     return;
   }
 
-  if (tabLeftAt !== null) {
-    const durationSeconds = Math.round((Date.now() - tabLeftAt) / 1000);
-    tabLeftAt = null;
-    sendAuditEvent({
-      eventType: 'page_return',
-      duration_seconds: durationSeconds,
-      timestamp: new Date().toISOString(),
-    });
+  clearTabHideDebounce();
+
+  if (tabHiddenTime.value !== null) {
+    const hiddenDurationSeconds = Math.round((Date.now() - tabHiddenTime.value) / 1000);
+
+    if (!tabHideLogged) {
+      logTabHide();
+    }
+
+    if (!isPageClosing && !pageCloseLogged) {
+      console.log(`[Exam] Tab return - user came back after ${hiddenDurationSeconds} seconds`);
+      tabSwitchCount.value += 1;
+      sendAuditEvent({
+        eventType: 'tab_show',
+        timestamp: new Date().toISOString(),
+        metadata: { hiddenDurationSeconds },
+      });
+      maybeShowTabSwitchWarning();
+    }
+
+    tabHiddenTime.value = null;
+    tabHideLogged = false;
   }
+
+  isTabVisible.value = true;
 }
 
 function preventCopy(e: ClipboardEvent) {
@@ -266,7 +360,12 @@ function onTouchEnd(event: TouchEvent) {
 
 function beforeUnloadHandler(event: BeforeUnloadEvent) {
   if (!isExamInProgress()) return;
+
+  isPageClosing = true;
+  clearTabHideDebounce();
+  logPageClose();
   autoSave.saveOnPageHide();
+
   const message = t('student.leaveExamWarning');
   event.preventDefault();
   event.returnValue = message;
@@ -275,6 +374,10 @@ function beforeUnloadHandler(event: BeforeUnloadEvent) {
 
 function onPageHide() {
   if (!isExamInProgress()) return;
+
+  isPageClosing = true;
+  clearTabHideDebounce();
+  logPageClose();
   autoSave.saveOnPageHide();
 }
 
@@ -365,7 +468,7 @@ watch(tabBlocked, (blocked) => {
 });
 
 onMounted(async () => {
-  document.addEventListener('visibilitychange', onVisibilityChange);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
   document.addEventListener('copy', preventCopy);
   document.addEventListener('cut', preventCut);
   document.addEventListener('paste', preventPaste);
@@ -385,7 +488,12 @@ onMounted(async () => {
   }
 
   try {
-    const { data } = await fetchStudentAttempt(attemptId);
+    let data: AttemptDetail;
+    try {
+      ({ data } = await fetchStudentAttempt(attemptId));
+    } catch {
+      ({ data } = await fetchAttempt(attemptId));
+    }
     attempt.value = data;
     currentIndex.value = data.currentQuestionIndex ?? 0;
 
@@ -409,8 +517,9 @@ onMounted(async () => {
 onUnmounted(() => {
   stopTimer();
   clearTimeout(redirectTimer);
+  clearTabHideDebounce();
   saveToast?.close();
-  document.removeEventListener('visibilitychange', onVisibilityChange);
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
   document.removeEventListener('copy', preventCopy);
   document.removeEventListener('cut', preventCut);
   document.removeEventListener('paste', preventPaste);

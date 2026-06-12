@@ -6,10 +6,22 @@ function lockKey(attemptId: string) {
   return `exam-tab-lock-${attemptId}`;
 }
 
+/** Works on HTTP LAN hosts where crypto.randomUUID requires a secure context. */
+function generateTabId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 function tabId() {
   const existing = sessionStorage.getItem('exam-tab-id');
   if (existing) return existing;
-  const id = crypto.randomUUID();
+  const id = generateTabId();
   sessionStorage.setItem('exam-tab-id', id);
   return id;
 }

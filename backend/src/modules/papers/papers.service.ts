@@ -220,6 +220,32 @@ export class PapersService {
     };
   }
 
+  async uploadAttachment(id: string, file: Express.Multer.File | undefined, actorId?: string) {
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+
+    await this.saveAttachment(id, file, actorId);
+
+    await this.auditService.log({
+      actorId,
+      action: 'UPDATE',
+      objectType: 'Paper',
+      objectId: id,
+      afterData: {
+        attachmentFileName: file.originalname,
+        attachmentFileSize: file.size,
+      },
+      reason: 'Uploaded paper attachment',
+    });
+
+    const paper = await this.findOne(id);
+    return {
+      success: true,
+      attachment: paper.attachment,
+    };
+  }
+
   async removeAttachment(id: string, actorId?: string) {
     const paper = await this.getPaperOrThrow(id);
     this.assertEditable(paper);
@@ -249,7 +275,7 @@ export class PapersService {
       reason: 'Removed paper attachment',
     });
 
-    return this.findOne(id);
+    return { success: true };
   }
 
   private async saveAttachment(

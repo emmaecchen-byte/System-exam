@@ -490,7 +490,9 @@ export default {
     resultsPublishedAt: 'Published {date} by {name}',
   },
   paperForm: {
-    sectionTitle: 'Upload Original Paper',
+    sectionTitle: 'Original Exam Paper Attachment',
+    uploadedAt: 'Uploaded {date}',
+    downloadAttachmentTooltip: 'Download original exam paper',
     auditNote:
       'This file is for audit purposes only. Questions must still be entered manually or via Excel.',
     dropHint: 'Drop file here or click to upload',
@@ -986,6 +988,7 @@ export default {
     unsavedProgress: 'You have unsaved progress. Are you sure you want to leave?',
     leaveExamWarning: 'You are still taking the exam. Are you sure you want to leave?',
     visibilityTrackingNotice: 'This exam tracks page visibility. Switching tabs will be recorded.',
+    tabSwitchWarning: 'Please do not switch away from the exam tab. This is being recorded.',
     backToMyExams: '← Back to My Exams',
     resultsNotAvailable: 'Results not available yet',
     resultsPendingPublish: 'Results not yet published by administrator',

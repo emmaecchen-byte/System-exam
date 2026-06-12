@@ -75,6 +75,12 @@ onMounted(loadExam);
   <div v-loading="loading" class="instructions">
     <el-alert v-if="error" :title="error" type="error" show-icon class="mb" />
 
+    <el-empty
+      v-else-if="!loading && !exam && !error"
+      :description="t('student.loadAttemptFailed')"
+      class="mb"
+    />
+
     <el-card v-else-if="exam">
       <h2>{{ examTitle(examId, exam.title) }}</h2>
 

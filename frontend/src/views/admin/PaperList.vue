@@ -70,15 +70,20 @@ async function downloadAttachment(row: PaperListItem, event: Event) {
     </el-table-column>
     <el-table-column :label="t('papers.colAttachment')" width="90" align="center">
       <template #default="{ row }">
-        <el-button
+        <el-tooltip
           v-if="row.hasAttachment"
-          link
-          type="primary"
-          :title="row.attachment?.fileName ?? t('paperForm.download')"
-          @click="downloadAttachment(row, $event)"
+          :content="t('paperForm.downloadAttachmentTooltip')"
+          placement="top"
         >
-          <el-icon :size="18"><Paperclip /></el-icon>
-        </el-button>
+          <el-button
+            link
+            type="primary"
+            :aria-label="t('paperForm.downloadAttachmentTooltip')"
+            @click="downloadAttachment(row, $event)"
+          >
+            <el-icon :size="18"><Paperclip /></el-icon>
+          </el-button>
+        </el-tooltip>
         <span v-else class="muted">—</span>
       </template>
     </el-table-column>

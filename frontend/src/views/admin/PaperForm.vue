@@ -12,6 +12,7 @@ import {
   createPaperNewVersion,
   deletePaperAttachment,
   downloadPaperAttachment,
+  fetchPaper,
   fetchPaperPreview,
   removePaperQuestion,
   reorderPaperQuestions,
@@ -115,6 +116,10 @@ function formatFileSize(bytes: number | null | undefined) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatUploadDate(value: string | null | undefined) {
+  return value ? new Date(value).toLocaleString() : '—';
+}
+
 const beforeUpload: UploadProps['beforeUpload'] = (rawFile: UploadRawFile) => {
   const ext = rawFile.name.toLowerCase().slice(rawFile.name.lastIndexOf('.'));
   if (!['.doc', '.docx', '.pdf'].includes(ext)) {
@@ -132,8 +137,9 @@ async function handleUpload(file: UploadRawFile) {
   if (!props.isEditable) return false;
   uploading.value = true;
   try {
-    const { data } = await uploadPaperAttachment(props.paperId, file);
-    emit('updated', data);
+    await uploadPaperAttachment(props.paperId, file);
+    const { data: paper } = await fetchPaper(props.paperId);
+    emit('updated', paper);
     ElMessage.success(t('paperForm.uploaded'));
   } catch {
     ElMessage.error(t('paperForm.uploadFailed'));
@@ -161,8 +167,9 @@ async function handleDeleteAttachment() {
   }
   uploading.value = true;
   try {
-    const { data } = await deletePaperAttachment(props.paperId);
-    emit('updated', data);
+    await deletePaperAttachment(props.paperId);
+    const { data: paper } = await fetchPaper(props.paperId);
+    emit('updated', paper);
     ElMessage.success(t('paperForm.deleted'));
   } catch {
     ElMessage.error(t('paperForm.deleteFailed'));
@@ -375,6 +382,9 @@ async function createNewVersion() {
           <div class="file-meta">
             <strong>{{ attachment?.fileName }}</strong>
             <span class="size">{{ formatFileSize(attachment?.fileSize) }}</span>
+            <span class="uploaded-at">
+              {{ t('paperForm.uploadedAt', { date: formatUploadDate(attachment?.uploadedAt) }) }}
+            </span>
           </div>
           <div class="file-actions">
             <el-button :icon="Download" @click="handleDownload">{{ t('paperForm.download') }}</el-button>

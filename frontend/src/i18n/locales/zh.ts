@@ -971,6 +971,7 @@ export default {
     unsavedProgress: '您有未保存的进度，确定要离开吗？',
     leaveExamWarning: '您仍在考试中，确定要离开吗？',
     visibilityTrackingNotice: '本考试会记录页面可见性，切换标签页将被记录。',
+    tabSwitchWarning: '请勿切换离开考试标签页，该行为已被记录。',
     backToMyExams: '← 返回我的考试',
     resultsNotAvailable: '成绩尚未公布',
     resultsPendingPublish: '成绩尚未发布',

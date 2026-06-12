@@ -122,14 +122,16 @@ export async function downloadPaperAttachment(paperId: string, fileName?: string
 
 export function uploadPaperAttachment(paperId: string, file: File) {
   const form = new FormData();
-  form.append('attachment', file);
-  return api.put<PaperDetail>(`/admin/papers/${paperId}`, form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
+  form.append('file', file);
+  return api.post<{ success: boolean; attachment: PaperAttachmentMeta }>(
+    `/admin/papers/${paperId}/attachment`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
 }
 
 export function deletePaperAttachment(paperId: string) {
-  return api.delete<PaperDetail>(`/admin/papers/${paperId}/attachment`);
+  return api.delete<{ success: boolean }>(`/admin/papers/${paperId}/attachment`);
 }
 
 export function deletePaper(id: string) {

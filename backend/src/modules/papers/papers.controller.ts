@@ -17,7 +17,10 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions, RequestUser } from '../../common/decorators/auth.decorator';
 import { PERMISSIONS } from '../../common/constants';
 import { PapersService } from './papers.service';
-import { PaperAttachmentInterceptor } from './paper-attachment.interceptor';
+import {
+  PaperAttachmentFileInterceptor,
+  PaperAttachmentInterceptor,
+} from './paper-attachment.interceptor';
 import {
   AddPaperQuestionsDto,
   CreatePaperDto,
@@ -64,6 +67,17 @@ export class PapersController {
   @Get(':id/preview')
   preview(@Param('id') id: string) {
     return this.papersService.preview(id);
+  }
+
+  @Post(':id/attachment')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(PaperAttachmentFileInterceptor)
+  uploadAttachment(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.papersService.uploadAttachment(id, file, user.userId);
   }
 
   @Get(':id/attachment')
