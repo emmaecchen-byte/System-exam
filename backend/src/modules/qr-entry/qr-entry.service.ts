@@ -81,7 +81,7 @@ export class QrEntryService {
     const hash = this.qrTokenService.hashToken(token.trim());
     const cached = await this.qrTokenCache.getToken(hash);
 
-    let session = await this.prisma.examSession.findFirst({
+    const session = await this.prisma.examSession.findFirst({
       where: cached ? { id: cached.sessionId } : { qrTokenHash: hash },
       include: {
         exam: {
