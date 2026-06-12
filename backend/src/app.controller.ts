@@ -1,6 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Public } from './common/decorators/current-user.decorator';
+import { isDeepSeekConfigured } from './config/deepseek.config';
 import { PrismaService } from './prisma/prisma.module';
 
 @ApiTags('Health')
@@ -15,6 +16,7 @@ export class AppController {
     return {
       status: 'ok',
       timestamp: new Date().toISOString(),
+      deepseekConfigured: isDeepSeekConfigured(),
     };
   }
 }

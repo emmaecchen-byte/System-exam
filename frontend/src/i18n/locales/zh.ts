@@ -93,6 +93,7 @@ export default {
     departments: '部门管理',
     roles: '角色权限',
     reports: '统计报告',
+    openMenu: '打开菜单',
   },
   meta: {
     login: '登录',

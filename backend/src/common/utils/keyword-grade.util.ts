@@ -25,13 +25,19 @@ export interface SubjectiveGradeResult {
 }
 
 const AI_COMMENT_PREFIX = '[AI] ';
+const DEEPSEEK_COMMENT_PREFIX = '[AI/DeepSeek] ';
 
-export function aiReviewComment(rationale: string): string {
-  return `${AI_COMMENT_PREFIX}${rationale}`;
+export type AiReviewProvider = 'keyword' | 'deepseek';
+
+export function aiReviewComment(rationale: string, provider: AiReviewProvider = 'keyword'): string {
+  const prefix = provider === 'deepseek' ? DEEPSEEK_COMMENT_PREFIX : AI_COMMENT_PREFIX;
+  return `${prefix}${rationale}`;
 }
 
 export function isAiGradedComment(comment: string | null | undefined): boolean {
-  return Boolean(comment?.startsWith(AI_COMMENT_PREFIX));
+  return Boolean(
+    comment?.startsWith(AI_COMMENT_PREFIX) || comment?.startsWith(DEEPSEEK_COMMENT_PREFIX),
+  );
 }
 
 /** Split rubric / reference text into keyword tokens for matching. */

@@ -4,13 +4,16 @@ import { PrismaService } from '../../prisma/prisma.module';
 import {
   aiReviewComment,
   gradeSubjectiveAnswer,
+  SubjectiveGradeResult,
 } from '../../common/utils/keyword-grade.util';
+import { DeepSeekGradingService } from '../llm/deepseek-grading.service';
 
 const OBJECTIVE_TYPES = new Set(['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TRUE_FALSE']);
 const SUBJECTIVE_TYPES = new Set(['FILL_BLANK', 'SHORT_ANSWER']);
 
 interface QuestionSnapshot {
   type: string;
+  stem?: string;
   scoringRubric?: string;
   standardAnswerJson?: {
     key?: string;
@@ -45,9 +48,17 @@ export interface AutoGradeResult {
   idempotent: boolean;
 }
 
+interface PreparedSubjectiveGrade {
+  result: SubjectiveGradeResult | null;
+  provider: 'deepseek' | 'keyword';
+}
+
 @Injectable()
 export class AutoGradeService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private deepSeekGrading: DeepSeekGradingService,
+  ) {}
 
   isObjectiveType(type: string): boolean {
     return OBJECTIVE_TYPES.has(type);
@@ -152,6 +163,8 @@ export class AutoGradeService {
     let gradedObjectiveCount = 0;
     let subjectiveCount = 0;
 
+    const subjectiveGrades = await this.prepareSubjectiveGrades(attempt.answerRecords, scoreMap);
+
     await this.prisma.$transaction(async (tx) => {
       for (const record of attempt.answerRecords) {
         const snapshot = record.questionSnapshotJson as unknown as QuestionSnapshot;
@@ -162,25 +175,8 @@ export class AutoGradeService {
           hasSubjective = true;
           subjectiveCount += 1;
 
-          // Short answers always require human review before results are finalized.
-          if (qType === 'SHORT_ANSWER') {
-            hasPendingManual = true;
-            await tx.answerRecord.update({
-              where: { id: record.id },
-              data: {
-                autoScore: null,
-                finalScore: null,
-                reviewStatus: 'PENDING',
-              },
-            });
-            continue;
-          }
-
-          const aiResult = this.gradeSubjective(
-            snapshot,
-            record.answerContentJson,
-            maxScore,
-          );
+          const prepared = subjectiveGrades.get(record.id);
+          const aiResult = prepared?.result ?? null;
 
           if (aiResult?.gradable) {
             aiGradedCount += 1;
@@ -191,7 +187,10 @@ export class AutoGradeService {
                 autoScore: aiResult.score,
                 finalScore: aiResult.score,
                 reviewStatus: 'APPROVED',
-                reviewComment: aiReviewComment(aiResult.rationale),
+                reviewComment: aiReviewComment(
+                  aiResult.rationale,
+                  prepared?.provider === 'deepseek' ? 'deepseek' : 'keyword',
+                ),
               },
             });
           } else {
@@ -292,6 +291,51 @@ export class AutoGradeService {
       subjectiveCount,
       idempotent: false,
     };
+  }
+
+  private async prepareSubjectiveGrades(
+    answerRecords: Prisma.AnswerRecordGetPayload<object>[],
+    scoreMap: Map<string, number>,
+  ): Promise<Map<string, PreparedSubjectiveGrade>> {
+    const results = new Map<string, PreparedSubjectiveGrade>();
+    const subjectiveRecords = answerRecords.filter((record) => {
+      const snapshot = record.questionSnapshotJson as unknown as QuestionSnapshot;
+      return this.isSubjectiveType(snapshot.type);
+    });
+
+    await Promise.all(
+      subjectiveRecords.map(async (record) => {
+        const snapshot = record.questionSnapshotJson as unknown as QuestionSnapshot;
+        const maxScore = scoreMap.get(record.questionId) ?? 0;
+        const answer = (record.answerContentJson ?? {}) as CandidateAnswer;
+
+        if (snapshot.type === 'SHORT_ANSWER' && this.deepSeekGrading.isConfigured()) {
+          const std = snapshot.standardAnswerJson;
+          const llmResult = await this.deepSeekGrading.gradeShortAnswer({
+            questionStem: snapshot.stem ?? '',
+            maxScore,
+            referenceAnswer: std?.reference ?? std?.text,
+            scoringRubric: snapshot.scoringRubric,
+            keywords: std?.keywords,
+            candidateAnswer: answer.text ?? '',
+          });
+
+          if (llmResult) {
+            results.set(record.id, { result: llmResult, provider: 'deepseek' });
+            return;
+          }
+        }
+
+        const keywordResult = this.gradeSubjective(
+          snapshot,
+          record.answerContentJson,
+          maxScore,
+        );
+        results.set(record.id, { result: keywordResult, provider: 'keyword' });
+      }),
+    );
+
+    return results;
   }
 
   private buildResultFromExisting(

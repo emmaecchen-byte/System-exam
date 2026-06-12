@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '@/stores/auth';
 import { ROLES } from '@/constants/roles';
 import { useRoleLabels } from '@/composables/useRoleLabel';
-import LayoutHeaderActions from '@/components/LayoutHeaderActions.vue';
+import AppSidebarLayout from '@/components/AppSidebarLayout.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -57,54 +57,21 @@ async function logout() {
 </script>
 
 <template>
-  <el-container class="layout">
-    <el-aside width="220px" class="aside">
-      <div class="brand">{{ t('app.name') }}</div>
-      <div class="role-badge">{{ roleLabel(auth.primaryRole) }}</div>
+  <AppSidebarLayout
+    :brand="t('app.name')"
+    :role-badge="roleLabel(auth.primaryRole)"
+    theme="admin"
+    :user-name="auth.user?.name"
+    :employee-no="auth.user?.employeeNo"
+    :router-view-key="route.fullPath"
+    @logout="logout"
+  >
+    <template #menu>
       <el-menu :default-active="activeMenu" router>
         <el-menu-item v-for="item in visibleMenus" :key="item.path" :index="item.path">
           {{ t(item.labelKey) }}
         </el-menu-item>
       </el-menu>
-    </el-aside>
-    <el-container>
-      <el-header class="header">
-        <LayoutHeaderActions
-          :user-name="auth.user?.name"
-          :employee-no="auth.user?.employeeNo"
-          @logout="logout"
-        />
-      </el-header>
-      <el-main>
-        <router-view :key="route.fullPath" />
-      </el-main>
-    </el-container>
-  </el-container>
+    </template>
+  </AppSidebarLayout>
 </template>
-
-<style scoped>
-.layout {
-  min-height: 100vh;
-}
-.aside {
-  background: #111827;
-  color: #fff;
-}
-.brand {
-  padding: 20px 20px 8px;
-  font-weight: 700;
-  font-size: 18px;
-}
-.role-badge {
-  padding: 0 20px 16px;
-  font-size: 12px;
-  color: #9ca3af;
-}
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  background: #fff;
-  border-bottom: 1px solid #e5e7eb;
-}
-</style>

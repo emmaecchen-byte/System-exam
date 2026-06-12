@@ -42,7 +42,9 @@ async function logout() {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   padding: 12px 16px;
+  padding-top: max(12px, env(safe-area-inset-top));
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
   position: sticky;
@@ -52,11 +54,29 @@ async function logout() {
 .brand {
   font-weight: 700;
   color: #1d4ed8;
+  font-size: 1rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .content {
   padding: 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
   max-width: 960px;
   margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+@media (max-width: 768px) {
+  .topbar {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .content {
+    padding: 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
 }
 .student-layout.exam-mode .content {
   padding: 0;

@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '@/stores/auth';
 import { useRoleLabels } from '@/composables/useRoleLabel';
-import LayoutHeaderActions from '@/components/LayoutHeaderActions.vue';
+import AppSidebarLayout from '@/components/AppSidebarLayout.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -16,9 +17,9 @@ const menus = [
   { path: '/exam-admin/results', labelKey: 'nav.resultsReports', permission: 'result:view' },
 ];
 
-function canSeeMenu(item: (typeof menus)[number]) {
-  return !item.permission || auth.hasPermission(item.permission);
-}
+const visibleMenus = computed(() =>
+  menus.filter((item) => !item.permission || auth.hasPermission(item.permission)),
+);
 
 async function logout() {
   await auth.logout();
@@ -27,58 +28,21 @@ async function logout() {
 </script>
 
 <template>
-  <el-container class="layout">
-    <el-aside width="220px" class="aside">
-      <div class="brand">{{ t('app.examAdmin') }}</div>
-      <div class="role-badge">{{ roleLabel(auth.primaryRole) }}</div>
+  <AppSidebarLayout
+    :brand="t('app.examAdmin')"
+    :role-badge="roleLabel(auth.primaryRole)"
+    theme="exam-admin"
+    :user-name="auth.user?.name"
+    :employee-no="auth.user?.employeeNo"
+    :router-view-key="route.fullPath"
+    @logout="logout"
+  >
+    <template #menu>
       <el-menu :default-active="route.path" router>
-        <el-menu-item
-          v-for="item in menus.filter(canSeeMenu)"
-          :key="item.path"
-          :index="item.path"
-        >
+        <el-menu-item v-for="item in visibleMenus" :key="item.path" :index="item.path">
           {{ t(item.labelKey) }}
         </el-menu-item>
       </el-menu>
-    </el-aside>
-    <el-container>
-      <el-header class="header">
-        <LayoutHeaderActions
-          :user-name="auth.user?.name"
-          :employee-no="auth.user?.employeeNo"
-          @logout="logout"
-        />
-      </el-header>
-      <el-main>
-        <router-view />
-      </el-main>
-    </el-container>
-  </el-container>
+    </template>
+  </AppSidebarLayout>
 </template>
-
-<style scoped>
-.layout {
-  min-height: 100vh;
-}
-.aside {
-  background: #0f766e;
-  color: #fff;
-}
-.brand {
-  padding: 20px 20px 8px;
-  font-weight: 700;
-  font-size: 18px;
-}
-.role-badge {
-  padding: 0 20px 16px;
-  font-size: 12px;
-  color: #99f6e4;
-}
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  background: #fff;
-  border-bottom: 1px solid #e5e7eb;
-}
-</style>

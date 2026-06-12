@@ -831,7 +831,7 @@ export class StudentService {
         paper: { include: { paperQuestions: { orderBy: { sortOrder: 'asc' } } } },
       },
     });
-    let score = await this.prisma.scoreRecord.findUnique({ where: { attemptId } });
+    const score = await this.prisma.scoreRecord.findUnique({ where: { attemptId } });
 
     if (attempt.status === 'IN_PROGRESS') {
       return {

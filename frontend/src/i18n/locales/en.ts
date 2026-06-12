@@ -93,6 +93,7 @@ export default {
     departments: 'Departments',
     roles: 'Roles & Permissions',
     reports: 'Reports',
+    openMenu: 'Open menu',
   },
   meta: {
     login: 'Login',

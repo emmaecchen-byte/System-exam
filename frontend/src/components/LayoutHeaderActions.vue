@@ -34,8 +34,21 @@ const { t } = useI18n();
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 .user-name {
   color: #374151;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 768px) {
+  .header-actions {
+    gap: 6px;
+  }
+  .user-name {
+    display: none;
+  }
 }
 </style>
