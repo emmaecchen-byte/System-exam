@@ -22,7 +22,7 @@ const { t } = useI18n();
         <el-card shadow="hover">
           <h4>{{ t('dashboard.questionBank') }}</h4>
           <p>{{ t('dashboard.questionBankDesc') }}</p>
-          <router-link to="/questions" custom v-slot="{ navigate }">
+          <router-link to="/admin/questions" custom v-slot="{ navigate }">
             <el-button type="primary" link @click="navigate">{{ t('common.open') }}</el-button>
           </router-link>
         </el-card>
@@ -31,7 +31,7 @@ const { t } = useI18n();
         <el-card shadow="hover">
           <h4>{{ t('dashboard.papers') }}</h4>
           <p>{{ t('dashboard.papersDesc') }}</p>
-          <router-link to="/papers" custom v-slot="{ navigate }">
+          <router-link to="/admin/papers" custom v-slot="{ navigate }">
             <el-button type="primary" link @click="navigate">{{ t('common.open') }}</el-button>
           </router-link>
         </el-card>
@@ -40,7 +40,7 @@ const { t } = useI18n();
         <el-card shadow="hover">
           <h4>{{ t('dashboard.exams') }}</h4>
           <p>{{ t('dashboard.examsDesc') }}</p>
-          <router-link to="/exams" custom v-slot="{ navigate }">
+          <router-link to="/admin/exams" custom v-slot="{ navigate }">
             <el-button type="primary" link @click="navigate">{{ t('common.open') }}</el-button>
           </router-link>
         </el-card>

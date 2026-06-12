@@ -12,5 +12,5 @@ coverage/
 .vscode/
 uploads/
 backend/prisma/dev.db
-backend/prisma/dev.db-journal
+server.config.local.env
 *.tsbuildinfo

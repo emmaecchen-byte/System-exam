@@ -25,7 +25,7 @@ fi
 npx pm2 delete exam-api exam-web 2>/dev/null || true
 pkill -f "nest start --watch" 2>/dev/null || true
 pkill -f "concurrently.*backend:dev" 2>/dev/null || true
-for port in 3000 5173; do
+for port in 3000 5173 "${EXAM_WEB_PORT:-5173}"; do
   while read -r pid; do
     [[ -z "$pid" ]] && continue
     kill "$pid" 2>/dev/null || true

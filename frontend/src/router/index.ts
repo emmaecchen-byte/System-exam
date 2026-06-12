@@ -124,6 +124,36 @@ const routes: RouteRecordRaw[] = [
         meta: { ...resultsReportsMeta },
       },
       {
+        path: 'questions',
+        component: () => import('@/views/admin/QuestionsView.vue'),
+        meta: { titleKey: 'meta.questionBank' },
+      },
+      {
+        path: 'papers',
+        component: () => import('@/views/admin/PapersView.vue'),
+        meta: { titleKey: 'meta.papers' },
+      },
+      {
+        path: 'papers/:id/edit',
+        component: () => import('@/views/admin/PaperEditView.vue'),
+        meta: { titleKey: 'meta.editPaper' },
+      },
+      {
+        path: 'exams',
+        component: () => import('@/views/admin/ExamsView.vue'),
+        meta: { titleKey: 'meta.exams', permission: 'exam:manage' },
+      },
+      {
+        path: 'exams/new/edit',
+        component: () => import('@/views/admin/ExamEditView.vue'),
+        meta: { titleKey: 'meta.createExam', permission: 'exam:manage' },
+      },
+      {
+        path: 'exams/:id/edit',
+        component: () => import('@/views/admin/ExamEditView.vue'),
+        meta: { titleKey: 'meta.editExam', permission: 'exam:manage' },
+      },
+      {
         path: 'exams/:examId/sessions',
         component: () => import('@/views/admin/SessionManagement.vue'),
         meta: {
@@ -141,94 +171,14 @@ const routes: RouteRecordRaw[] = [
           permission: 'result:export',
         },
       },
-    ],
-  },
-
-  // Super Admin only
-  {
-    path: '/settings',
-    component: () => import('@/layouts/AdminLayout.vue'),
-    meta: { requiresAuth: true, roles: [ROLES.SUPER_ADMIN] },
-    children: [
       {
-        path: '',
-        component: () => import('@/views/admin/SettingsView.vue'),
-        meta: { titleKey: 'meta.systemSettings' },
-      },
-    ],
-  },
-  {
-    path: '/admin/audit-logs',
-    component: () => import('@/layouts/AdminLayout.vue'),
-    meta: { requiresAuth: true, roles: [ROLES.SUPER_ADMIN], permission: 'audit:view' },
-    children: [
-      {
-        path: '',
+        path: 'audit-logs',
         component: () => import('@/views/admin/AuditLogs.vue'),
-        meta: { titleKey: 'meta.auditLogs', roles: [ROLES.SUPER_ADMIN] },
-      },
-    ],
-  },
-
-  // Admin content management
-  {
-    path: '/exams',
-    component: () => import('@/layouts/AdminLayout.vue'),
-    meta: { requiresAuth: true, roles: superAdminAndAdmin, permission: 'exam:manage' },
-    children: [
-      {
-        path: '',
-        component: () => import('@/views/admin/ExamsView.vue'),
-        meta: { titleKey: 'meta.exams', permission: 'exam:manage' },
-      },
-      {
-        path: 'new/edit',
-        component: () => import('@/views/admin/ExamEditView.vue'),
-        meta: { titleKey: 'meta.createExam', permission: 'exam:manage' },
-      },
-      {
-        path: ':id/edit',
-        component: () => import('@/views/admin/ExamEditView.vue'),
-        meta: { titleKey: 'meta.editExam', permission: 'exam:manage' },
-      },
-      {
-        path: ':examId/sessions',
-        component: () => import('@/views/admin/SessionManagement.vue'),
-        meta: { titleKey: 'meta.sessionManagement', permission: 'exam:manage' },
-      },
-      {
-        path: ':examId/results',
-        component: () => import('@/views/admin/ExamResults.vue'),
-        meta: { titleKey: 'meta.examResults', permission: 'result:export' },
-      },
-    ],
-  },
-  {
-    path: '/questions',
-    component: () => import('@/layouts/AdminLayout.vue'),
-    meta: { requiresAuth: true, roles: superAdminAndAdmin },
-    children: [
-      {
-        path: '',
-        component: () => import('@/views/admin/QuestionsView.vue'),
-        meta: { titleKey: 'meta.questionBank' },
-      },
-    ],
-  },
-  {
-    path: '/papers',
-    component: () => import('@/layouts/AdminLayout.vue'),
-    meta: { requiresAuth: true, roles: superAdminAndAdmin },
-    children: [
-      {
-        path: '',
-        component: () => import('@/views/admin/PapersView.vue'),
-        meta: { titleKey: 'meta.papers' },
-      },
-      {
-        path: ':id/edit',
-        component: () => import('@/views/admin/PaperEditView.vue'),
-        meta: { titleKey: 'meta.editPaper' },
+        meta: {
+          titleKey: 'meta.auditLogs',
+          roles: [ROLES.SUPER_ADMIN],
+          permission: 'audit:view',
+        },
       },
     ],
   },
@@ -299,7 +249,7 @@ const routes: RouteRecordRaw[] = [
     ],
   },
 
-  // Grader workbench
+  // Grader workbench (grader portal only — not in admin sidebar)
   {
     path: '/admin/grading',
     component: () => import('@/layouts/GraderLayout.vue'),
@@ -382,10 +332,15 @@ const routes: RouteRecordRaw[] = [
     ],
   },
 
-  // Legacy redirects
-  { path: '/admin/questions', redirect: '/questions' },
-  { path: '/admin/papers', redirect: '/papers' },
-  { path: '/admin/exams', redirect: '/exams' },
+  // Legacy redirects (old top-level admin paths)
+  { path: '/questions', redirect: '/admin/questions' },
+  { path: '/papers', redirect: '/admin/papers' },
+  { path: '/papers/:id/edit', redirect: (to) => `/admin/papers/${to.params.id}/edit` },
+  { path: '/exams', redirect: '/admin/exams' },
+  { path: '/exams/new/edit', redirect: '/admin/exams/new/edit' },
+  { path: '/exams/:id/edit', redirect: (to) => `/admin/exams/${to.params.id}/edit` },
+  { path: '/exams/:examId/sessions', redirect: (to) => `/admin/exams/${to.params.examId}/sessions` },
+  { path: '/exams/:examId/results', redirect: (to) => `/admin/exams/${to.params.examId}/results` },
   { path: '/audit-logs', redirect: '/admin/audit-logs' },
   { path: '/candidate-results', redirect: '/exam-admin/results' },
 ];

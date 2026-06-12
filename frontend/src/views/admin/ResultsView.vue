@@ -51,7 +51,6 @@ const canRegrade = computed(
     auth.hasPermission('result:correct') &&
     (auth.hasRole(ROLES.SUPER_ADMIN, ROLES.ADMIN)),
 );
-
 const loading = ref(false);
 const exporting = ref(false);
 const rows = ref<ResultRow[]>([]);

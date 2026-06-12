@@ -21,7 +21,11 @@ const emit = defineEmits<{
   select: [questions: Question[]];
 }>();
 
+const SELECT_ALL_PAGE_SIZE = 100;
+
 const loading = ref(false);
+const selectingAll = ref(false);
+const isSyncingSelection = ref(false);
 const list = ref<Question[]>([]);
 const selected = ref<Question[]>([]);
 const totalMatching = ref(0);
@@ -35,13 +39,13 @@ const filters = reactive({
   difficulty: '' as string | number,
 });
 
-function buildQuery(pageSize: number) {
+function buildQuery(page: number, pageSize: number) {
   return {
     search: filters.search || undefined,
     categoryId: filters.categoryId || undefined,
     type: filters.type || undefined,
     status: 'ACTIVE' as const,
-    page: 1,
+    page,
     pageSize,
   };
 }
@@ -57,37 +61,71 @@ function applyClientFilters(questions: Question[]) {
 async function load() {
   loading.value = true;
   try {
-    const { data } = await fetchQuestions(buildQuery(100));
+    const { data } = await fetchQuestions(buildQuery(1, SELECT_ALL_PAGE_SIZE));
     totalMatching.value = data.meta.total;
     list.value = applyClientFilters(data.data);
-    await nextTick();
-    tableRef.value?.clearSelection();
+    syncTableSelection(selected.value);
   } finally {
     loading.value = false;
   }
 }
 
-async function selectAllMatching() {
-  const targetCount = filters.difficulty ? list.value.length : totalMatching.value;
-  if (targetCount === 0) return;
+/** Backend caps pageSize at 100 — paginate to load every matching question. */
+async function fetchAllMatchingQuestions(): Promise<Question[]> {
+  const all: Question[] = [];
+  let page = 1;
+  let totalPages = 1;
 
-  loading.value = true;
+  do {
+    const { data } = await fetchQuestions(buildQuery(page, SELECT_ALL_PAGE_SIZE));
+    all.push(...data.data);
+    totalPages = data.meta.totalPages;
+    page += 1;
+  } while (page <= totalPages);
+
+  return applyClientFilters(all);
+}
+
+function syncTableSelection(rowsToSelect: Question[]) {
+  const idsToSelect = new Set(rowsToSelect.map((q) => q.id));
+  nextTick(() => {
+    if (!tableRef.value) return;
+    isSyncingSelection.value = true;
+    tableRef.value.clearSelection();
+    list.value.forEach((row) => {
+      if (idsToSelect.has(row.id)) {
+        tableRef.value!.toggleRowSelection(row, true);
+      }
+    });
+    selected.value = rowsToSelect;
+    nextTick(() => {
+      isSyncingSelection.value = false;
+    });
+  });
+}
+
+async function selectAllMatching() {
+  if (totalMatching.value === 0 && !list.value.length) return;
+
+  selectingAll.value = true;
   try {
-    if (!filters.difficulty && totalMatching.value > list.value.length) {
-      const { data } = await fetchQuestions(buildQuery(totalMatching.value));
-      list.value = applyClientFilters(data.data);
-      await nextTick();
-    }
-    tableRef.value?.clearSelection();
-    await nextTick();
-    tableRef.value?.toggleAllSelection();
+    const all = await fetchAllMatchingQuestions();
+    if (!all.length) return;
+    list.value = all;
+    selected.value = all;
+    syncTableSelection(all);
   } finally {
-    loading.value = false;
+    selectingAll.value = false;
   }
 }
 
 function clearSelection() {
+  selected.value = [];
+  isSyncingSelection.value = true;
   tableRef.value?.clearSelection();
+  nextTick(() => {
+    isSyncingSelection.value = false;
+  });
 }
 
 watch(
@@ -102,6 +140,7 @@ watch(
 );
 
 function onSelectionChange(rows: Question[]) {
+  if (isSyncingSelection.value) return;
   selected.value = rows;
 }
 
@@ -168,7 +207,11 @@ function close() {
         <el-button type="primary" @click="load">{{ t('common.search') }}</el-button>
       </el-form-item>
       <el-form-item>
-        <el-button :disabled="!list.length" @click="selectAllMatching">
+        <el-button
+          :loading="selectingAll"
+          :disabled="!list.length && totalMatching === 0"
+          @click="selectAllMatching"
+        >
           {{ t('questionPicker.selectAll') }}
         </el-button>
         <el-button :disabled="!selected.length" @click="clearSelection">

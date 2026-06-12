@@ -113,7 +113,7 @@ async function submitCreate() {
     createVisible.value = false;
     createForm.value = { title: '', categoryId: '' };
     createAttachment.value = null;
-    router.push(`/papers/${data.id}/edit`);
+    router.push(`/admin/papers/${data.id}/edit`);
   } catch {
     ElMessage.error(t('papers.createFailed'));
   } finally {
@@ -122,7 +122,7 @@ async function submitCreate() {
 }
 
 function editPaper(row: PaperListItem) {
-  router.push(`/papers/${row.id}/edit`);
+  router.push(`/admin/papers/${row.id}/edit`);
 }
 
 function deleteDisabledReason(row: PaperListItem): string | null {

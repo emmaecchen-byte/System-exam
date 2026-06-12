@@ -261,7 +261,7 @@ async function createNewVersion() {
   try {
     const { data } = await createPaperNewVersion(props.paperId);
     ElMessage.success(t('paperForm.newVersionCreated'));
-    router.push(`/papers/${data.id}/edit`);
+    router.push(`/admin/papers/${data.id}/edit`);
   } catch {
     ElMessage.error(t('paperForm.newVersionFailed'));
   }

@@ -162,6 +162,20 @@ export class AutoGradeService {
           hasSubjective = true;
           subjectiveCount += 1;
 
+          // Short answers always require human review before results are finalized.
+          if (qType === 'SHORT_ANSWER') {
+            hasPendingManual = true;
+            await tx.answerRecord.update({
+              where: { id: record.id },
+              data: {
+                autoScore: null,
+                finalScore: null,
+                reviewStatus: 'PENDING',
+              },
+            });
+            continue;
+          }
+
           const aiResult = this.gradeSubjective(
             snapshot,
             record.answerContentJson,

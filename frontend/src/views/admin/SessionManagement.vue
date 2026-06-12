@@ -254,7 +254,7 @@ async function copyQrUrl() {
 
 const editPath = computed(() => {
   if (route.path.startsWith('/admin/exams')) {
-    return `/exams/${examId.value}/edit`;
+    return `/admin/exams/${examId.value}/edit`;
   }
   if (route.path.startsWith('/exam-sessions')) {
     return `/exam-sessions/${examId.value}/edit`;

@@ -11,15 +11,6 @@ const { t } = useI18n();
     <el-row :gutter="16">
       <el-col :xs="24" :sm="12" :md="6">
         <el-card shadow="hover">
-          <h4>{{ t('dashboard.systemSettings') }}</h4>
-          <p>{{ t('dashboard.systemSettingsDesc') }}</p>
-          <router-link to="/settings" custom v-slot="{ navigate }">
-            <el-button type="primary" link @click="navigate">{{ t('dashboard.openSettings') }}</el-button>
-          </router-link>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="hover">
           <h4>{{ t('dashboard.auditLogs') }}</h4>
           <p>{{ t('dashboard.auditLogsDesc') }}</p>
           <router-link to="/admin/audit-logs" custom v-slot="{ navigate }">
@@ -40,7 +31,7 @@ const { t } = useI18n();
         <el-card shadow="hover">
           <h4>{{ t('dashboard.questionBank') }}</h4>
           <p>{{ t('dashboard.questionBankDescShort') }}</p>
-          <router-link to="/questions" custom v-slot="{ navigate }">
+          <router-link to="/admin/questions" custom v-slot="{ navigate }">
             <el-button type="primary" link @click="navigate">{{ t('dashboard.manageQuestions') }}</el-button>
           </router-link>
         </el-card>
@@ -49,7 +40,7 @@ const { t } = useI18n();
         <el-card shadow="hover">
           <h4>{{ t('dashboard.exams') }}</h4>
           <p>{{ t('dashboard.examsDescShort') }}</p>
-          <router-link to="/exams" custom v-slot="{ navigate }">
+          <router-link to="/admin/exams" custom v-slot="{ navigate }">
             <el-button type="primary" link @click="navigate">{{ t('dashboard.manageExams') }}</el-button>
           </router-link>
         </el-card>

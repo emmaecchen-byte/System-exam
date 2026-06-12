@@ -15,6 +15,8 @@
     "dev": "npm run dev:ensure-db && concurrently -k -n api,web -c blue,green \"npm run backend:dev\" \"npm run frontend:dev:wait\"",
     "setup": "npm run backend:install && npm run frontend:install && npm run backend:setup",
     "services:start": "bash scripts/start-services-quick.sh",
+    "services:start:8895": "bash scripts/start-server.sh",
+    "services:setup:server": "bash scripts/setup-linux-server.sh",
     "services:start:build": "bash scripts/start-services.sh",
     "services:install": "bash scripts/install-autostart.sh",
     "services:stop": "bash scripts/stop-services.sh",

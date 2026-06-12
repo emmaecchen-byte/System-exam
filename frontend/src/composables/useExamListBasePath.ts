@@ -15,6 +15,6 @@ export function useExamListBasePath() {
     if (auth.primaryRole === ROLES.EXAM_ADMIN) {
       return '/exam-sessions';
     }
-    return '/exams';
+    return '/admin/exams';
   });
 }

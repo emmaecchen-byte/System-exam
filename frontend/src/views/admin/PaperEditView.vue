@@ -47,7 +47,7 @@ async function load() {
     versions.value = verRes.data;
   } catch {
     ElMessage.error(t('paperEdit.loadFailed'));
-    router.push('/papers');
+    router.push('/admin/papers');
   } finally {
     loading.value = false;
   }
@@ -93,7 +93,7 @@ onMounted(load);
   <div v-loading="loading" class="paper-edit">
     <div class="page-header">
       <div>
-        <el-button link @click="router.push('/papers')">{{ t('paperEdit.backToPapers') }}</el-button>
+        <el-button link @click="router.push('/admin/papers')">{{ t('paperEdit.backToPapers') }}</el-button>
         <h2>{{ paper ? paperTitle(paper.id, paper.title) : t('paperEdit.defaultTitle') }}</h2>
         <div class="meta">
           <el-tag>{{ paper ? contentStatus(paper.status) : '' }}</el-tag>
@@ -146,7 +146,7 @@ onMounted(load);
               :key="v.id"
               :type="v.id === paperId ? 'primary' : 'info'"
             >
-              <router-link :to="`/papers/${v.id}/edit`">
+              <router-link :to="`/admin/papers/${v.id}/edit`">
                 {{ v.versionLabel }} — {{ contentStatus(v.status) }} ({{ v.totalScore }}
                 {{ t('common.pointsAbbr') }})
               </router-link>
